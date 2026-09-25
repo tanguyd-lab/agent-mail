@@ -1,0 +1,13 @@
+{
+  "_lisezmoi": "Configuration de l'outil, sans toucher au code. Déposez ce fichier à côté de index.html. Les réglages saisis par un utilisateur dans l'application ont toujours priorité sur ce fichier.",
+
+  "relaisUrl": "",
+  "relaisCode": "",
+
+  "googleClientId": "",
+  "microsoftClientId": "",
+  "microsoftTenant": "common",
+
+  "moteur": "claude",
+  "modeles": { "claude": "claude-opus-5", "chatgpt": "gpt-5" }
+}

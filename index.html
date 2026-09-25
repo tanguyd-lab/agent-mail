@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="fr" data-skin="gmail">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Mail</title>
+<meta name="description" content="Votre boîte mail, pilotée par un agent que vous voyez travailler.">
+<!--
+  ═══════════════════════════════════════════════════════════════════════════
+  AGENT MAIL — outil offert aux apprenants France IA
+  ═══════════════════════════════════════════════════════════════════════════
+  L'interface prend l'apparence de la messagerie connectée : habillage Gmail
+  quand on branche Google, habillage Outlook quand on branche Microsoft.
+  Par-dessus, une couche « agent » : curseur qui se déplace, projecteur sur
+  la ligne en cours, actions estampillées une par une, console sombre.
+
+  Tout est réel : OAuth Google (jeton en mémoire) et Microsoft (PKCE),
+  API Gmail et Microsoft Graph pour lire, étiqueter, marquer lu, archiver et
+  créer des brouillons, API Claude en streaming pour analyser et rédiger.
+  Aucun envoi automatique, aucune suppression, aucun serveur intermédiaire.
+  Configuration : voir README.md.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════ HABILLAGES ═══════════════ */
+:root{
+  --police:'Roboto','Helvetica Neue',Arial,sans-serif;
+  --fond:#F6F8FC; --surface:#fff; --surface-2:#F2F6FC;
+  --accent:#0B57D0; --accent-doux:#D3E3FD; --accent-tres-doux:#E8F0FE;
+  --encre:#1F1F1F; --encre-2:#444746; --encre-3:#5F6368;
+  --bord:#E3E6EA; --bord-2:#EDF0F3;
+  --rouge:#D93025; --vert:#188038; --ambre:#B06000; --violet:#7B1FA2;
+  --r-rail:0 16px 16px 0; --h-top:64px;
+  --agent:#6C8CFF; --agent-2:#A66BFF;
+}
+:root[data-skin=outlook]{
+  --police:'Segoe UI',system-ui,-apple-system,'Inter',sans-serif;
+  --fond:#F5F5F5; --surface:#fff; --surface-2:#F3F7FD;
+  --accent:#0F6CBD; --accent-doux:#EBF3FC; --accent-tres-doux:#F3F9FD;
+  --encre:#242424; --encre-2:#424242; --encre-3:#616161;
+  --bord:#E1DFDD; --bord-2:#EDEBE9;
+  --rouge:#C4314B; --vert:#107C41; --ambre:#986F0B; --violet:#8764B8;
+  --r-rail:4px; --h-top:48px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--fond);color:var(--encre);font-family:var(--police);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+h1,h2,h3{margin:0;font-weight:500}
+p{margin:0}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-thumb{background:#c9ccd1;border:3px solid transparent;background-clip:content-box;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#9aa0a6;background-clip:content-box}
+
+/* ═══════════════ ÉCRAN DE LANCEMENT — charte France IA ═══════════════ */
+#lancement{position:fixed;inset:0;z-index:100;background:#fff;color:#374151;overflow-y:auto;
+  font-family:'Inter',system-ui,-apple-system,sans-serif;display:flex;flex-direction:column}
+.lanc{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:100%;max-width:460px;margin:0 auto;padding:48px 24px}
+.logo-fia{height:44px;width:auto;display:block}
+.signature{font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#6B7280;
+  margin:16px 0 40px}
+.bloc{width:100%}
+.aucune{border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:left;background:#F9FAFB;margin-bottom:12px}
+.aucune .t{font-size:14.5px;font-weight:700;color:#111827}
+.aucune .d{font-weight:400;font-size:12.5px;color:#6B7280;margin-top:6px;line-height:1.55}
+.aucune code{display:inline-block;background:#fff;border:1px solid #E5E7EB;border-radius:5px;padding:1px 6px;
+  font-family:'Courier New',monospace;font-size:11.5px;color:#111827;word-break:break-all}
+.aucune .url{font-family:'Courier New',monospace;text-transform:uppercase;font-size:11.5px;color:#4169E1}
+.aucune .pas{margin:14px 0 16px;padding-left:18px;font-size:12.5px;color:#374151;line-height:1.7}
+.aucune .pas li{margin-bottom:9px}
+.btn-activer{width:100%;margin-top:14px;background:#4169E1;color:#fff;font-weight:600;font-size:14px;
+  border-radius:10px;padding:10px}
+.btn-activer:hover{background:#2F4FBF}
+.connexions{display:flex;flex-direction:column;align-items:center;gap:12px}
+.place-google{min-height:40px;display:flex;justify-content:center}
+/* Bouton Microsoft : proportions officielles (41px, logo 21px, Segoe UI 15px) */
+.bouton-ms{display:inline-flex;align-items:center;gap:12px;height:40px;padding:0 12px;background:#fff;
+  border:1px solid #8C8C8C;border-radius:4px;width:360px;justify-content:center;
+  font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;color:#5E5E5E;transition:background .12s}
+.bouton-ms:hover{background:#F3F3F3}
+.bouton-ms svg{width:21px;height:21px;flex:none}
+/* Reprise de session */
+.reprise{display:flex;align-items:center;gap:13px;border:1px solid #E5E7EB;border-radius:14px;padding:12px 14px;
+  background:#fff;box-shadow:0 1px 3px rgba(17,24,39,.06)}
+.reprise .ph{width:40px;height:40px;border-radius:50%;flex:none;background:#4169E1 center/cover no-repeat;color:#fff;
+  display:grid;place-items:center;font-weight:700;font-size:15px}
+.reprise .qui{flex:1;min-width:0}
+.reprise .nom{display:block;font-size:14.5px;font-weight:700;color:#111827}
+.reprise .adr{display:block;font-size:12.5px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-continuer{background:#4169E1;color:#fff;font-weight:600;font-size:14px;border-radius:10px;padding:9px 18px;flex:none}
+.btn-continuer:hover{background:#2F4FBF}
+.autre-compte{display:block;margin:12px auto 0;font-size:12.5px;font-weight:600;color:#4169E1}
+.autre-compte:hover{text-decoration:underline}
+.etat-l{font-size:12.5px;line-height:1.55;color:#6B7280;margin-top:14px;text-align:center;min-height:18px}
+.mini{font-size:12.5px;color:#6B7280;margin-top:28px;line-height:1.6;text-align:center;max-width:42ch}
+.liens-bas{display:flex;align-items:center;gap:14px;margin-top:34px;flex-wrap:wrap;justify-content:center}
+.liens-bas button{font-size:12.5px;font-weight:600;color:#4169E1}
+.liens-bas button:hover{text-decoration:underline}
+.pastille{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;
+  border:1px solid #E5E7EB;background:#F9FAFB;color:#4B5563;white-space:nowrap}
+.pastille.verte{background:#ECFDF5;border-color:#A7F3D0;color:#047857}
+.pastille.bleue{background:#EFF6FF;border-color:#DBEAFE;color:#2F4FBF}
+.pastille.ambre{background:#FFFBEB;border-color:#FDE68A;color:#B45309}
+.champ-l label{display:block;font-size:12.5px;font-weight:600;color:#374151;margin-bottom:6px}
+.champ-l input{width:100%;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;font-size:14px;
+  font-family:'Inter',sans-serif;background:#fff}
+.champ-l input:focus{outline:none;border-color:#4169E1;box-shadow:0 0 0 3px rgba(65,105,225,.12)}
+.pied-l{padding:20px 0 26px;display:flex;justify-content:center}
+.tricolore{display:flex;gap:3px}
+.tricolore i{display:block;width:30px;height:4px;border-radius:2px;background:#4169E1}
+.tricolore i:last-child{background:#EF4444}
+
+/* ═══════════════ CLIENT DE MESSAGERIE ═══════════════ */
+#client{display:none;height:100%;flex-direction:column}
+#client.on{display:flex}
+
+/* — Barre supérieure — */
+.topbar{height:var(--h-top);display:flex;align-items:center;gap:14px;padding:0 16px;flex:none;background:var(--surface)}
+:root[data-skin=outlook] .topbar{background:var(--accent);color:#fff;padding:0 12px}
+.topbar .burger{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--encre-3)}
+.topbar .burger:hover{background:rgba(60,64,67,.08)}
+:root[data-skin=outlook] .topbar .burger{color:#fff}
+:root[data-skin=outlook] .topbar .burger:hover{background:rgba(255,255,255,.12)}
+.topbar .marque{display:flex;align-items:center;gap:9px;min-width:132px}
+.topbar .marque .nom{font-size:21px;color:#5F6368;letter-spacing:-.01em}
+:root[data-skin=outlook] .topbar .marque .nom{font-size:15px;font-weight:600;color:#fff}
+.chercher{flex:1;max-width:720px;position:relative}
+.chercher svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--encre-3)}
+.chercher input{width:100%;height:46px;border:0;border-radius:24px;background:#EAF1FB;padding:0 16px 0 46px;font-size:15px}
+.chercher input:focus{outline:none;background:#fff;box-shadow:0 1px 3px rgba(32,33,36,.28)}
+:root[data-skin=outlook] .chercher input{height:32px;border-radius:4px;background:rgba(255,255,255,.96);font-size:13.5px;padding-left:38px}
+:root[data-skin=outlook] .chercher svg{left:11px;width:15px;height:15px}
+.topdroite{margin-left:auto;display:flex;align-items:center;gap:8px}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;
+  font-size:12.5px;font-weight:600;flex:none}
+.puce-compte{font-size:12.5px;color:var(--encre-3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:root[data-skin=outlook] .puce-compte{color:rgba(255,255,255,.92)}
+.ic-btn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--encre-3)}
+.ic-btn:hover{background:rgba(60,64,67,.08)}
+:root[data-skin=outlook] .topbar .ic-btn{color:#fff}
+:root[data-skin=outlook] .topbar .ic-btn:hover{background:rgba(255,255,255,.12)}
+.ic-btn svg{width:19px;height:19px}
+
+/* — Corps — */
+.corps{flex:1;display:grid;grid-template-columns:256px minmax(0,1fr);min-height:0;position:relative}
+:root[data-skin=outlook] .corps{grid-template-columns:232px 400px minmax(0,1fr);gap:0;padding:0 8px 8px;background:var(--fond)}
+:root[data-skin=gmail] .corps{padding-bottom:0}
+
+/* — Rail — */
+.rail{overflow-y:auto;padding:8px 8px 20px;display:flex;flex-direction:column}
+:root[data-skin=outlook] .rail{background:transparent;padding:8px 6px}
+.composer{display:flex;align-items:center;gap:12px;background:#C2E7FF;color:#001D35;border-radius:16px;
+  padding:16px 22px 16px 16px;margin:4px 0 14px 8px;align-self:flex-start;font-size:14px;font-weight:500;
+  box-shadow:0 1px 2px rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15);transition:box-shadow .15s,background .15s}
+.composer:hover{box-shadow:0 1px 3px rgba(60,64,67,.3),0 4px 8px 3px rgba(60,64,67,.15);background:#B3DFFF}
+.composer svg{width:20px;height:20px}
+:root[data-skin=outlook] .composer{background:var(--accent);color:#fff;border-radius:4px;padding:8px 16px;margin:2px 0 12px 4px;
+  font-size:13.5px;font-weight:600;box-shadow:none}
+:root[data-skin=outlook] .composer:hover{background:#0C5A9E}
+.dossier{display:flex;align-items:center;gap:16px;width:100%;text-align:left;border-radius:var(--r-rail);
+  padding:0 12px;height:32px;color:var(--encre-2);font-size:14px;font-weight:500}
+:root[data-skin=outlook] .dossier{height:30px;gap:12px;font-size:13.5px;border-radius:4px;margin:1px 0}
+.dossier:hover{background:rgba(32,33,36,.059)}
+.dossier.on{background:var(--accent-doux);color:#001D35;font-weight:700}
+:root[data-skin=outlook] .dossier.on{background:var(--accent-doux);color:var(--accent);font-weight:600}
+.dossier svg{width:18px;height:18px;flex:none}
+.dossier .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dossier .c{font-size:12px;font-weight:700}
+.rail .titre{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--encre-3);
+  padding:18px 12px 6px}
+.rail .pied-rail{margin-top:auto;padding:14px 12px 0;font-size:11.5px;color:var(--encre-3);line-height:1.5}
+
+/* — Panneau liste — */
+.panneau{display:flex;flex-direction:column;min-width:0;background:var(--surface);overflow:hidden}
+:root[data-skin=gmail] .panneau{border-radius:16px 0 0 0;border-left:1px solid var(--bord-2)}
+:root[data-skin=outlook] .panneau{border-radius:8px;margin-right:8px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.outils{display:flex;align-items:center;gap:4px;padding:6px 12px;border-bottom:1px solid var(--bord-2);flex:none;min-height:48px}
+.outils .titre-d{font-size:15px;font-weight:600;margin-right:auto;padding-left:6px}
+:root[data-skin=outlook] .outils .titre-d{font-size:17px;font-weight:600}
+.outils .cpt{font-size:12px;color:var(--encre-3);margin-right:6px}
+.liste{flex:1;overflow-y:auto;position:relative}
+
+/* Ligne Gmail : une seule ligne, expéditeur | objet — extrait | date */
+.ligne{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:0 16px;height:40px;
+  border-bottom:1px solid var(--bord-2);background:var(--surface-2);position:relative;overflow:hidden;
+  transition:box-shadow .12s,background .2s,opacity .35s}
+.ligne:hover{box-shadow:inset 1px 0 0 #dadce0,inset -1px 0 0 #dadce0,0 1px 2px 0 rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15);z-index:2}
+.ligne.nonlu{background:var(--surface);font-weight:700}
+.ligne.on{background:var(--accent-tres-doux)}
+.ligne .etoile{width:20px;height:20px;flex:none;color:#c4c7c5;order:0}
+:root[data-skin=gmail] .haut{display:contents}
+:root[data-skin=gmail] .ligne .exp{order:1}
+:root[data-skin=gmail] .ligne .tags-l{order:2}
+:root[data-skin=gmail] .ligne .centre{order:3}
+:root[data-skin=gmail] .ligne .date{order:4}
+.ligne .exp{width:180px;flex:none;font-size:14px;color:var(--encre);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ligne .centre{flex:1;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden}
+.ligne .obj{font-size:14px;color:var(--encre);white-space:nowrap;flex:none;max-width:52%;overflow:hidden;text-overflow:ellipsis}
+.ligne .ext{font-size:14px;color:var(--encre-3);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ligne .date{width:64px;flex:none;text-align:right;font-size:12px;color:var(--encre-2)}
+.ligne.nonlu .date{font-weight:700}
+.etiq-l{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;line-height:1;padding:3px 7px;
+  border-radius:4px;background:var(--bord-2);color:var(--encre-2);flex:none;white-space:nowrap}
+.etiq-l.bleue{background:#D3E3FD;color:#0B57D0}.etiq-l.rouge{background:#FCE8E6;color:#C5221F}
+.etiq-l.ambre{background:#FEEFC3;color:#B06000}.etiq-l.verte{background:#CEEAD6;color:#137333}
+.etiq-l.violette{background:#F3E8FD;color:#7B1FA2}
+
+/* Ligne Outlook : carte sur deux lignes, barre bleue à gauche si non lu */
+:root[data-skin=outlook] .ligne{height:auto;display:block;padding:10px 12px 10px 16px;border-bottom:1px solid var(--bord-2);
+  background:var(--surface)}
+:root[data-skin=outlook] .ligne::before{content:"";position:absolute;left:5px;top:12px;bottom:12px;width:3px;border-radius:2px;
+  background:var(--accent);opacity:0;transition:opacity .25s}
+:root[data-skin=outlook] .ligne.nonlu::before{opacity:1}
+:root[data-skin=outlook] .ligne.on{background:var(--accent-doux)}
+:root[data-skin=outlook] .ligne:hover{box-shadow:none;background:#F5F9FD}
+:root[data-skin=outlook] .ligne .etoile{display:none}
+:root[data-skin=outlook] .ligne .exp{width:auto;flex:1;font-size:14px;font-weight:600}
+:root[data-skin=outlook] .ligne .centre{display:block;margin-top:2px}
+:root[data-skin=outlook] .ligne .obj{display:block;max-width:100%;font-size:13.5px;color:var(--accent);font-weight:600;margin-bottom:2px}
+:root[data-skin=outlook] .ligne.nonlu .obj{color:var(--accent)}
+:root[data-skin=outlook] .ligne:not(.nonlu) .obj{color:var(--encre-2);font-weight:400}
+:root[data-skin=outlook] .ligne .ext{display:block;white-space:normal;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+:root[data-skin=outlook] .ligne .haut{display:flex;align-items:center;gap:8px}
+:root[data-skin=outlook] .ligne .date{width:auto;font-size:12px;color:var(--encre-3)}
+.tags-l{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+:root[data-skin=gmail] .tags-l{margin:0;order:-1}
+
+/* Lignes : états agent */
+.ligne .voile-scan{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .2s}
+.ligne.scan .voile-scan{opacity:1}
+.ligne.scan .voile-scan::after{content:"";position:absolute;top:0;bottom:0;width:45%;
+  background:linear-gradient(90deg,transparent,rgba(108,140,255,.22),transparent);animation:balai 1s linear infinite}
+@keyframes balai{0%{left:-45%}100%{left:100%}}
+.ligne.fait{animation:flash .7s ease-out}
+@keyframes flash{0%{background:rgba(24,128,56,.16)}100%{}}
+.ligne.part{opacity:0;transform:translateX(24px)}
+
+/* — Panneau de lecture — */
+.lecture{background:var(--surface);min-width:0;display:flex;flex-direction:column;overflow:hidden}
+:root[data-skin=gmail] .lecture{position:absolute;inset:0 0 0 256px;z-index:5;border-left:1px solid var(--bord-2);border-radius:16px 0 0 0}
+:root[data-skin=gmail] .lecture[hidden]{display:none}
+:root[data-skin=outlook] .lecture{border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.lecture-outils{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--bord-2);flex:none}
+.lecture-corps{flex:1;overflow-y:auto;padding:22px 32px 60px}
+.lecture-corps .objet{font-size:22px;font-weight:400;color:var(--encre);margin-bottom:16px;line-height:1.3}
+:root[data-skin=outlook] .lecture-corps .objet{font-size:21px;font-weight:600}
+.entete-msg{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.entete-msg .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:600;font-size:15px;flex:none}
+.entete-msg .nom{font-size:14px;font-weight:700}
+.entete-msg .adr{font-size:12.5px;color:var(--encre-3)}
+.entete-msg .quand{margin-left:auto;font-size:12.5px;color:var(--encre-3);white-space:nowrap}
+.texte-msg{font-size:14px;line-height:1.75;color:var(--encre);white-space:pre-wrap;word-wrap:break-word;max-width:78ch}
+.actions-rep{display:flex;gap:10px;margin-top:26px}
+.bouton-rep{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--bord);border-radius:18px;padding:8px 18px;
+  font-size:14px;color:var(--encre-2);background:var(--surface)}
+.bouton-rep:hover{background:var(--surface-2);box-shadow:0 1px 2px rgba(60,64,67,.2)}
+.bouton-rep svg{width:16px;height:16px}
+:root[data-skin=outlook] .bouton-rep{border-radius:4px;padding:6px 14px;font-size:13.5px}
+
+/* Cartes injectées par l'agent dans le message */
+.carte-ia{border:1px solid rgba(108,140,255,.4);background:linear-gradient(180deg,rgba(108,140,255,.07),rgba(108,140,255,.02));
+  border-radius:12px;padding:14px 16px;margin:18px 0}
+.carte-ia .ct{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:#4356C9;margin-bottom:10px}
+.carte-ia .ct svg{width:14px;height:14px}
+.carte-ia .contenu{font-size:13.5px;line-height:1.65;white-space:pre-wrap;color:var(--encre)}
+.zone-brouillon{width:100%;min-height:200px;border:1px solid var(--bord);border-radius:8px;padding:12px 14px;
+  font-size:14px;line-height:1.7;resize:vertical;background:var(--surface)}
+.zone-brouillon:focus{outline:none;border-color:var(--accent)}
+.rangee-b{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.note-b{font-size:11.5px;color:var(--encre-3)}
+.ecrit::after{content:"";display:inline-block;width:2px;height:16px;background:var(--agent);margin-left:2px;
+  vertical-align:-3px;animation:cli .9s steps(2) infinite}
+@keyframes cli{0%,50%{opacity:1}51%,100%{opacity:0}}
+.vide-lecture{flex:1;display:grid;place-items:center;text-align:center;color:var(--encre-3);padding:40px}
+.vide-lecture svg{width:56px;height:56px;color:var(--bord);margin-bottom:12px}
+
+/* ═══════════════ COUCHE AGENT ═══════════════ */
+#curseur{position:fixed;left:0;top:0;z-index:820;pointer-events:none;opacity:0;color:var(--agent-2);
+  transition:opacity .25s;will-change:transform;filter:drop-shadow(0 4px 10px rgba(12,16,28,.35))}
+#curseur.on{opacity:1}
+#curseur .fleche{position:absolute;left:0;top:0;width:19px;height:21px}
+#curseur .tag{position:absolute;left:14px;top:17px;white-space:nowrap;background:var(--agent-2);color:#fff;
+  font-family:'Inter',system-ui,sans-serif;font-size:11.5px;font-weight:650;letter-spacing:-.01em;
+  padding:3px 8px;border-radius:0 7px 7px 7px;box-shadow:0 4px 12px rgba(12,16,28,.28)}
+#curseur .bulle{position:absolute;left:14px;top:43px;white-space:nowrap;max-width:330px;overflow:hidden;text-overflow:ellipsis;
+  background:#141826;color:#C9D3EE;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;padding:5px 10px;
+  border-radius:8px;border:1px solid rgba(166,107,255,.28);box-shadow:0 8px 22px rgba(8,11,20,.45);
+  opacity:0;transform:translateY(-3px);transition:opacity .18s,transform .18s}
+#curseur.parle .bulle{opacity:1;transform:none}
+/* La « carte d'action » : elle s'ouvre à l'endroit exact où l'agent agit */
+#curseur .ouverture{position:absolute;left:14px;top:43px;min-width:150px;background:#12151F;color:#E7ECFA;
+  border:1px solid rgba(255,255,255,.1);border-radius:11px;box-shadow:0 14px 34px rgba(6,9,18,.55);
+  font-family:'Inter',sans-serif;padding:8px;opacity:0;transform:scale(.9) translateY(-4px);transform-origin:top left;
+  transition:opacity .16s cubic-bezier(.2,.8,.3,1),transform .16s cubic-bezier(.2,.8,.3,1)}
+#curseur.ouvre .ouverture{opacity:1;transform:none}
+#curseur.ouvre .bulle{opacity:0}
+.ouverture .titre{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#7C88AC;
+  padding:2px 6px 6px}
+.ouverture .opt{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;font-size:12px;color:#9AA6C7;
+  white-space:nowrap;transition:background .15s,color .15s}
+.ouverture .opt .rond{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.4;flex:none}
+.ouverture .opt.choisi{background:var(--agent-2);color:#fff;font-weight:650}
+.ouverture .opt.choisi .rond{opacity:1;background:#fff}
+.ouverture .fait{display:flex;align-items:center;gap:9px;padding:4px 6px;font-size:12.5px;font-weight:600;color:#fff}
+.ouverture .fait svg{width:14px;height:14px;color:#6FE3A0;flex:none}
+.ouverture .fait.violet svg{color:var(--agent-2)}
+.ouverture .detail{font-size:11px;color:#8794B5;padding:2px 6px 0;max-width:230px;white-space:normal;line-height:1.45}
+/* Le curseur de l'utilisateur, étiqueté pendant que l'agent travaille */
+#curseur-vous{position:fixed;left:0;top:0;z-index:815;pointer-events:none;opacity:0;transition:opacity .25s}
+#curseur-vous.on{opacity:1}
+#curseur-vous .tag{position:absolute;left:11px;top:14px;white-space:nowrap;background:#2F80ED;color:#fff;
+  font-family:'Inter',sans-serif;font-size:11px;font-weight:650;padding:2px 7px;border-radius:0 6px 6px 6px;
+  box-shadow:0 4px 10px rgba(12,16,28,.25)}
+#trainee{position:fixed;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;z-index:819;pointer-events:none;opacity:0;transition:opacity .3s;will-change:transform;
+  border-radius:50%;background:radial-gradient(circle,rgba(166,107,255,.55),transparent 70%)}
+#curseur.on ~ #trainee{opacity:.7}
+#projecteur{position:fixed;z-index:800;pointer-events:none;border-radius:6px;opacity:0;
+  box-shadow:0 0 0 2px rgba(166,107,255,.85),0 0 0 9999px rgba(10,14,26,.42),0 0 30px rgba(108,140,255,.45);
+  transition:opacity .2s;will-change:left,top,width,height}
+#projecteur.on{opacity:1}
+.estampille{position:fixed;z-index:830;pointer-events:none;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:700;
+  padding:5px 11px;border-radius:999px;background:#12151F;color:#9FE8B8;border:1px solid rgba(159,232,184,.3);
+  box-shadow:0 8px 22px rgba(8,11,20,.45);animation:monte 1.15s cubic-bezier(.22,.61,.36,1) forwards}
+.estampille.bleu{color:#AFC4FF;border-color:rgba(175,196,255,.3)}
+.estampille.violet{color:#D9B8FF;border-color:rgba(217,184,255,.3)}
+@keyframes monte{0%{opacity:0;transform:translate(0,4px) scale(.9)}18%{opacity:1;transform:translate(0,-6px) scale(1)}
+  100%{opacity:0;transform:translate(0,-52px) scale(1)}}
+
+/* — Console de l'agent — */
+#dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(150%);z-index:840;width:min(1120px,calc(100vw - 32px));
+  font-family:'Inter',system-ui,sans-serif;color:#E5EAF7;transition:transform .45s cubic-bezier(.34,1.2,.44,1)}
+#dock.on{transform:translateX(-50%) translateY(0)}
+.dock-journal{background:rgba(9,12,22,.93);backdrop-filter:blur(14px);border:1px solid rgba(108,140,255,.22);
+  border-bottom:0;border-radius:16px 16px 0 0;max-height:0;overflow:hidden;transition:max-height .35s ease}
+#dock.ouvert .dock-journal{max-height:224px}
+.journal{max-height:224px;overflow-y:auto;padding:12px 16px}
+.jl{display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:12.5px;animation:entre .25s ease-out}
+@keyframes entre{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.jl .pt{width:6px;height:6px;border-radius:50%;margin-top:6px;flex:none;background:#6C8CFF}
+.jl.ok .pt{background:#54D98C}.jl.err .pt{background:#FF7A7A}.jl.ia .pt{background:#A66BFF}
+.jl .tx{flex:1;color:#C3CCE3;line-height:1.5}
+.jl .tx b{color:#fff;font-weight:600}
+.jl .hh{font-size:10.5px;color:#66739A;font-variant-numeric:tabular-nums}
+.dock-barre{background:rgba(12,16,28,.96);backdrop-filter:blur(14px);border:1px solid rgba(108,140,255,.28);
+  border-radius:16px;box-shadow:0 24px 60px rgba(4,7,16,.6);padding:10px 12px;display:flex;align-items:center;gap:10px}
+#dock.ouvert .dock-barre{border-radius:0 0 16px 16px;border-top-color:rgba(108,140,255,.12)}
+.dock-etat{display:flex;align-items:center;gap:9px;padding-right:10px;border-right:1px solid rgba(159,176,217,.16);min-width:150px}
+.dock-etat .led{width:9px;height:9px;border-radius:50%;background:#54D98C;flex:none}
+.dock-etat.actif .led{background:#6C8CFF;animation:bat 1.2s ease-in-out infinite}
+@keyframes bat{0%,100%{box-shadow:0 0 0 0 rgba(108,140,255,.6)}70%{box-shadow:0 0 0 8px rgba(108,140,255,0)}}
+.dock-etat .t{font-size:12.5px;font-weight:600;line-height:1.25}
+.dock-etat .t small{display:block;font-size:11px;font-weight:400;color:#8B98BC;max-width:180px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.mis{display:flex;gap:6px;flex:1;overflow-x:auto;scrollbar-width:none}
+.mis::-webkit-scrollbar{display:none}
+.mis button{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;border:1px solid rgba(159,176,217,.18);
+  background:rgba(255,255,255,.04);color:#DCE4FA;border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;
+  transition:transform .15s,background .15s,border-color .15s,box-shadow .15s}
+.mis button:hover:not(:disabled){transform:translateY(-2px);background:rgba(108,140,255,.16);border-color:rgba(108,140,255,.5);
+  box-shadow:0 8px 20px rgba(8,11,20,.5)}
+.mis button:disabled{opacity:.38;cursor:not-allowed}
+.mis button svg{width:14px;height:14px;color:#8FA8FF}
+.dock-chiffres{display:flex;gap:14px;padding:0 12px;border-left:1px solid rgba(159,176,217,.16)}
+.dock-chiffres div{text-align:center}
+.dock-chiffres .v{font-size:15px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.dock-chiffres .v.pop{animation:pop .45s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35);color:#8FA8FF}100%{transform:scale(1)}}
+.dock-chiffres .k{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:#7A87AB;margin-top:1px}
+.dock-actions{display:flex;align-items:center;gap:4px}
+.dock-actions button{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#98A5C6}
+.dock-actions button:hover{background:rgba(255,255,255,.07);color:#fff}
+.dock-actions svg{width:16px;height:16px}
+.dock-actions .stop{color:#FF8A8A;background:rgba(255,138,138,.12)}
+.dock-actions .stop:hover:not(:disabled){background:rgba(255,138,138,.22);color:#fff}
+.dock-actions .stop:disabled{color:#4C566F;background:transparent;cursor:not-allowed}
+.jauge{position:absolute;left:14px;right:14px;bottom:-1px;height:2px;background:rgba(108,140,255,.16);border-radius:2px;overflow:hidden}
+.jauge i{display:block;height:100%;width:0;background:linear-gradient(90deg,#6C8CFF,#A66BFF);transition:width .3s}
+
+/* ═══════════════ MODALES ET TOASTS ═══════════════ */
+.voile{position:fixed;inset:0;background:rgba(10,14,26,.5);z-index:900;display:none;align-items:center;justify-content:center;padding:24px}
+.voile.on{display:flex}
+.modale{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:86vh;overflow-y:auto;
+  box-shadow:0 24px 70px rgba(0,0,0,.4);font-family:'Inter',system-ui,sans-serif}
+.modale h3{font-size:17px;font-weight:700;padding:20px 22px 0}
+.modale .c{padding:14px 22px 20px;font-size:13.5px;line-height:1.6;color:#374151}
+.modale .c b{color:#111827}
+.modale .p{display:flex;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid #EEF0F3;background:#FAFBFC;
+  border-radius:0 0 14px 14px}
+.modale .btn{border:1px solid #DDE1E7;border-radius:9px;padding:8px 15px;font-size:13.5px;font-weight:600;background:#fff}
+.modale .btn:hover{background:#F5F7FA}
+.modale .btn.p{background:#0B57D0;border-color:#0B57D0;color:#fff}
+.modale .btn.d{color:#C5221F;border-color:#F3C6C3}
+.modale label{display:block;margin-bottom:14px}
+.modale label .l{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:#374151}
+.modale input,.modale select{width:100%;border:1px solid #DDE1E7;border-radius:9px;padding:9px 11px;font-size:13.5px}
+.modale input:focus,.modale select:focus{outline:none;border-color:#0B57D0;box-shadow:0 0 0 3px rgba(11,87,208,.12)}
+.modale .aide{font-size:11.5px;color:#6B7280;margin-top:5px;line-height:1.5}
+.modale ul{margin:8px 0 0;padding-left:18px}
+.modale li{margin-bottom:5px}
+.toast{position:fixed;left:50%;bottom:104px;transform:translateX(-50%) translateY(10px);background:#0E1424;color:#E5EAF7;
+  font-family:'Inter',sans-serif;font-size:13px;padding:10px 18px;border-radius:10px;z-index:910;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;border:1px solid rgba(108,140,255,.3)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(max-width:1100px){:root[data-skin=outlook] .corps{grid-template-columns:200px 340px minmax(0,1fr)}}
+@media(max-width:900px){.corps,:root[data-skin=outlook] .corps{grid-template-columns:minmax(0,1fr)}.rail{display:none}
+  :root[data-skin=gmail] .lecture{inset:0}#dock{width:calc(100vw - 16px)}}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ ÉCRAN DE LANCEMENT ══════════════ -->
+<div id="lancement">
+  <div class="lanc">
+    <img class="logo-fia" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfQAAACuCAMAAAD3ag+dAAAAWlBMVEVMaXEhJy8hJzAhJzAhJzAhJzAhJzA5LkohJzAgKDDrHCTu7/NDePHrGyVCePHrGSRCdfDw8PXu8PNdi/P19PTv9/oiKDFDevTx8vbsGyT8HSb5HSbwFR3x0ta/fE9aAAAAFnRSTlMAXH/T6rI0A/wZ+/z8Z2cyMjJo7O7uH85t8AAAAAlwSFlzAAALEwAACxMBAJqcGAAADalJREFUeNrtXYna3CYSHAkQ4CPHZiM79r7/c65ucdOgY/THVc4XH/MjGKqBomlarxcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwC0LWAN12MQmH+EN//tvNpaZI11aggTGdi8btYU1msPHp6dKmIF9Nr/picJB+7nBlbgdr6qBtPHJU3xJILwZIP3mG1m4HC+q0PZiLT4+4YKSD9LNJd0jIjtW9ZOvTp3pWWB9IfwfprUt6QyJ9UGRB8jKLA0h/BOnCIUFpIukizF5ayRmkY01/H+vc4m6Yn2XVskCcKKDenzDQO5c0oo4bVVyQ9JZIumqbAoD09+u4oIqjGI1Bukb3P0bHdQTSYyouL98t0uF7fxNcOcY1iXQRXZnTD8BIfwA0L9tnE9RYB9L/lTououII8h2kP1HHEVwzURVHUIIg/YGuGYKOG6YHnvKeCZD+cDBfxx1RcVnvDkh/whGbN0yPqbicHxekP0HHlbtmEiouv9MH6R/xiC2p4vKGA9I/oI5LqziQ/jFCpQqP2AJ2wltF9++A9Pcv6arQNeOruGFgS0U/B72K9Jx/fvu81pG/Fat7QHX9B+s95YjNVXFDfIN2juR7lVgjLiE91y/G5/Y/FFawP1/WNK+8/sMNP0PH+SpuLOLM+MmnXED62BGya1rBGONCJj9nTLRNJ8t6b35AK7YH6JLun0rrxihOrX/8kaVevhV8ybOP2DKhUtI9nxkXBCk90tsrSR8aMXWfYFM14yDQLVMxUTL2btdyR4V0yW7fK1ieoO0HKNFqIuvjT23NW4uzTP1rSdkIu14uBt4PjnbJS5xpwYC6Se63DuniWtK7sY61muGvQi0Rd4FvMFK+f77E5Y20ddExM7ms1OapWihXxgPGRa3VtGATo/qx4PyUZP1rSdmw3ql3ABuCiOSNR2whFSdGw2vcPcCVQm6Sn2uI/dAB7fi3mNmO00K/f741cfgHEWNtJn2uYETDvQdMsZotqa2ij9Wfob2ZbhX0fsWsOTDHl+s43xfHu7HjO3oY9EmkbybaWYw4pI/26DO2djuP6M3VOT1XMBhN7AFCZweraZF0s0tUS6q4zLeWiX/wVdxsJVqR4yjOJf3VqISjYeh0s+vWcOrtZ1VYcJqkvzrmRmyblWWChHSgekUyu8bYEAUq5l39WC86YgupuKWLPR9PcxPp7dapSnmkDw1m++dW+9YiwZnNJL1bOl8Fyk/b1ZR6MWYhs/y+GKmw2Unve3kFiTdSDodKhVTcXHWJfD+V9Gblev4/t7ZscmNs+lwNe552uGU76WGV6juD9MWarfLMMJuE8jWqn37jY3G7/snsZIpzqyBTWXs9W8d5J3L7OaxPuriB9KE7+D5RiqbTVtisyfm0Sds8JOMGTiXmSYN0sXLO9vvbQ3m1symiarBTu21NWy2r/v0BMrqKjmpfNDpUsHasl7pmAieqS4/5ezYmTwqBTjuP12HO/Sv102K0fy73tBnTPnxjXaSiDDbTaLzy22cxXWCYnJqbZ5RvuWk2sQ6aFb5ZUBoFVc26XnbEFlJxq5UHtnL6dcNIXxfGsU9dAxl/Sqld7Bofj39sVZw0I7RErYPRfPr450ZtIiL8NTTbqGOOJ2by14h9Brcm6v3bTdNQsOAuKA4fsWUujGkeDXD392xx8zFIFwTIHOlq2TWGKlKbRpexVoQmJTueaCJFRg+YY4urMZfI0Aoi28gKs1rLYqu+s6c1Zil5RqiULFFxxrf1JGGTJ510b1FnSE9sm5ZVNby72SauQFOtnokq/E7FlzJzim5fkUVqsUm7fVs/h43FXvL74gm+yDXjj2VnR8yo8r3oqnKW9ORWeRqO0R3tKsx9UzdJj36TlNW8dj2R7AgV4Lzr+yTnVs3sWh3nLQXWTxfI95KRrggjPROPF+d8a4dXh7Wms9jxhkxZzUZL5hTCt8llv5A2ZpGwt9LDk8RC3PapsNkC+X4q6fl70Tprx/4kaU3vBHHiN3JZ7dIuu8GaWodzY1lIaurt+eJ1WaiUDKg4q1VB+S4vJz0f3SXz2xHfcMwtW9JzwcNWk575rZ/UbkkRaVNsWS9b1UtCpUIqTrhLEXGpOJf05shxUxeZns2R3lVZDY9N/GmbXFd0gjEzinEc0XEhnmw2AhbUXk86NVNKevfiy6GN9HQF6zdxuaXN0Wkzamh52UqlXEk2goCKCxg3bdowuqTp8kjvltr6E0a5rllJ0tuMXzr0gH2OLt5Hzx1NMeZ1vVVFh6z0rFKh0Am/VYwYR3GiR65qdjdcc/O+ys9cZZCeHqqb1UjSWk89DKGEp26GVdYFmlPDXXwV51UlQwktCL73gwcuui5IWuopTFJFctQZQi4TMsgCVkNfmOOTdpcnvalY1OlHbEEVJ7UDSY3HOPNolcliurv1jDKRmHBf7XOJzFbSNWGpL5h8ef4oarMsUUQ6MRtBwK8+nml6UMR8FCdHztBD1sfBLbgyfIF50hktCMUhva2aeTfPDDEDDKf/bHmoVOaOaumFtrNj5Igx8Yybvt+eONJFFenrzFjuGV9WXE45ilI1awgtVKoywWNqtbiR9DnmnakQ3UqpS0jf/rX0+0k/1JDQzUxeECqled9Xkc7uiYbNcD5FILuhxE585Mmkr1Mjl9Wkk9LlFovZgI6LnCCKqoEeb82NpI/RqMonfG0fE/wa0iM7wWJOjnTzgSO2unYkNcJ9pHsx8Zt0m66F6fCO6zzS2Q2kF9VCDZWqU3Hp3cBNpBuRiTvhw/BuhwDKxDb7rOm9aqSr06QT7YiNy/NUXEq+30W6G4G8Dm9jH3cp6UeEnGIreA6K7pyhhkpVqrgUJfeNdGYGEq8R0GaI7UWk12/ZVreu2HwzOgt58hFbNqVQzWpzE+lmJJkZgew7oq/ap9c4Z1idGjhRx9WsMfkDnLtG+nYMNUUgB4IT487Wo6S3VWfdZhiUfuOLW1h/gPXIscE9pBshzkLGwlG7izxydWfdxxy4J7245YiKS8j3u0hf51iei9s6f03flFDF0ao6GCdw9IgtEBdH8hHl3D33rOk8N2gMuziZdFqgW8EB/W0vbjmk4hJddgvppNNXza8hPRUme01oxFmhUgEVN1iGToY2ccLW/zbSc2faxqp/OumaHM4lZST0TZLTlJ15xCb90AmmT4ijv4n0bGCJcWPg7Ol974lsZKR37ZJRh3o56dlQqYCKmxqSDOYguvMfQfr+RugrSO9oidQH62gjgbQ8+x5LIU/XcY5ZEHogQHr75JG+XyU+Xci99lkkHU7b9u79xk1oMJm+r5W47FYZKhVScbmpKnDhQbyP9C53qt/26qqRTruOIZcsIxZ3jn8hcUevL2Q9e8QWVnHZ2xqeP5+9zw2b3CtbS9EVI920qS7iG1p+xs0/IoVx9zGW6LZR4cwlR3RcKHSC8m4XT77r9ztnAj9jy49Lpvc9EUUwJ8Ka7cwXyOYkISJ+bLnkISpjXfPkch1TccW21Aez+NzshnWTAsi51/pLSbdv1k7JTJ1Ev82ekobpSD4D5mWQnYL+mJnk4rQXtwRUHKt4FWfQUm47T9+yeLRyPWBbjtkayzivGelm7oUpr+fLakJnpJxxHMVmcikl9L6vW0uqsLUcO2IL+uK6ilf0Rc5rbzpaNQaM+R5u3TAjLddlpFvL+tgEcwpvhJGJLrA5E8anwrzOJ3fKs/kqi7woQRUnSC/dbQjy/b7IGSMbG2vny5LNlLpvJbu9KIjCTwGophSAjduECHNyd4yNASBT4wdfaNOMeQtVFef5UKkqFRfc/rO3BkaK3hzR7m/DNHQp6WtSmXgTvA2bNSzt9KdKKbekLtqwJUOlgiqOeFzkaYHkYnd5YKS2cvnaAbHTd7qWdCccV9n0zQS2sQxSjR/UabVetUddMxandSqOLN/vDIGW8azdqnldTnos2fyeuD2R0KYLZXu3SsrTQqUCKo580EeS77dedginW1+7+3LSJz8K68NNmHKXylTbeR863M6VLA+VqlZxZPl+710278UK0x+XN2JcT/r8Ug4eyuDNM2+BWV4co8pLVoRKiWKne5l8H39ojtjm9aTPMd8Ea9xeoWK+dKfZLjuoqSH+a1/0ElSeJV1lv4mctmju5Dm1IWux4/6ypmRwnNjx8kbfbYyYH5ODfjY29lD8kBqQ5SHbsSeQGjV0nRhuDQxLIR8uuMyv11rkS+wx1ApI32RK+zzu1MYmDG1YX/FFarvcGj+2nlzSnzdS8fKHwulf8kjhizBfZtFj0I/W57zPru5dgXKKO9IyFDyRjrGQc+NLSh4Prjq9D6K53MueUJ5byO6zeEOIFZC/iVttVWKkQ4wnE+mT8uyTH/3+gW617AFNkPeWBAAAAAAAAAAAAAAAAAAAAAAAAAAA+EUhHw4wBMx2+sfD8efD8fvDEbqy89u3L9+eiy/f/vrv98/fH4vP3//+9L9/HoxPP78GQqA/BOmfvz/2v49L+pen/lpH+lP/w0jHSMdIP+HXN4z0X26kf8FIx0jHSD+P9CdjIP3zozGQ/unJiJD+bPz1/eH49OPnj+fi54+vgZtwf/z2cPzn4fj6cPwOtzPwIU6JxjQVj/6FUzYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAH/B96wztLEXk/zAAAAAElFTkSuQmCC" alt="France IA">
+    <p class="signature">Agent de mail</p>
+
+    <div class="bloc">
+      <!-- Reprise : on reconnaît la personne, elle n'a qu'un bouton à toucher -->
+      <div class="reprise" id="reprise" hidden>
+        <span class="ph" id="reprise-photo"></span>
+        <span class="qui"><span class="nom" id="reprise-nom"></span><span class="adr" id="reprise-mail"></span></span>
+        <button class="btn-continuer" id="btn-reprendre">Continuer</button>
+      </div>
+      <button class="autre-compte" id="btn-autre-compte" hidden>Utiliser un autre compte</button>
+
+      <div class="aucune" id="aucune-connexion" hidden>
+        <p class="t">Activer la connexion à votre messagerie</p>
+        <p class="d">Google et Microsoft exigent que l'application soit déclarée chez eux avant
+          d'afficher leur bouton. C'est une manipulation unique, à faire par la personne qui
+          distribue l'outil.</p>
+        <ol class="pas">
+          <li><b>Google</b> — <span class="url">console.cloud.google.com</span> → activez l'API Gmail
+            → Identifiants → ID client OAuth → <b>Application Web</b> → dans
+            « Origines JavaScript autorisées », collez&nbsp;: <code id="origine-ici"></code></li>
+          <li><b>Microsoft</b> — <span class="url">portal.azure.com</span> → Entra ID → App registrations
+            → New registration → plateforme <b>SPA</b> → URI de redirection&nbsp;:
+            <code id="redirection-ici"></code></li>
+          <li>Collez les identifiants obtenus ci-dessous.</li>
+        </ol>
+        <div class="champ-l"><label for="cid-google">Identifiant client Google</label>
+          <input type="text" id="cid-google" placeholder="…apps.googleusercontent.com" spellcheck="false"></div>
+        <div class="champ-l" style="margin-top:10px"><label for="cid-ms">Identifiant d'application Microsoft</label>
+          <input type="text" id="cid-ms" placeholder="00000000-0000-0000-0000-000000000000" spellcheck="false"></div>
+        <button class="btn-activer" id="btn-activer">Activer la connexion</button>
+        <p class="d" style="margin-top:10px">Pour les apprenants, mettez plutôt ces identifiants une
+          fois pour toutes dans <code>config.json</code> : ils n'auront alors rien à saisir.</p>
+      </div>
+      <div class="connexions" id="connexions">
+        <!-- Bouton rendu par Google lui-même (Google Identity Services) -->
+        <div id="btn-google" class="place-google"></div>
+        <!-- Bouton Microsoft, aux proportions et aux couleurs de leur charte -->
+        <button class="bouton-ms" id="btn-microsoft">
+          <svg viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
+          <span>Se connecter avec Microsoft</span>
+        </button>
+      </div>
+      <p class="etat-l" id="etat-cle"></p>
+    </div>
+
+    <p class="mini" id="mini-l">L'agent lit votre boîte, classe, résume et prépare vos réponses.
+      Il n'envoie rien et ne supprime rien.</p>
+
+    <div class="liens-bas">
+      <span class="pastille" id="pastille-moteur">Moteur : vérification…</span>
+      <button id="btn-aide">Comment ça marche</button>
+      <button id="btn-reglages-l">Réglages</button>
+    </div>
+  </div>
+
+  <div class="pied-l"><span class="tricolore"><i></i><i></i></span></div>
+</div>
+
+<!-- ══════════════ CLIENT DE MESSAGERIE ══════════════ -->
+<div id="client">
+  <header class="topbar">
+    <button class="burger" title="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="marque">
+      <span id="logo-skin"></span>
+      <span class="nom" id="nom-skin">Gmail</span>
+    </div>
+    <div class="chercher">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+      <input type="text" id="recherche" placeholder="Rechercher dans les messages">
+    </div>
+    <div class="topdroite">
+      <button class="ic-btn" id="btn-reglages" title="Réglages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
+      <span class="puce-compte" id="puce-compte"></span>
+      <span class="avatar" id="avatar-compte">?</span>
+    </div>
+  </header>
+
+  <div class="corps">
+    <nav class="rail">
+      <button class="composer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L18.5 9.5l-4-4L4 16v4z"/><path d="m14 6 4 4"/></svg>
+        <span id="txt-composer">Nouveau message</span>
+      </button>
+      <div id="dossiers"></div>
+      <div class="pied-rail">
+        Agent Mail · offert par France IA<br>
+        <a href="#" id="lien-guide" style="color:var(--accent);text-decoration:none">Comment ça marche</a> ·
+        <a href="#" id="lien-quitter" style="color:var(--accent);text-decoration:none">Quitter</a>
+      </div>
+    </nav>
+
+    <section class="panneau">
+      <div class="outils">
+        <span class="titre-d" id="titre-dossier">Boîte de réception</span>
+        <span class="cpt" id="cpt-liste"></span>
+        <button class="ic-btn" id="btn-recharger" title="Actualiser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20 11a8 8 0 1 0-1.5 5.7"/><path d="M20 5v6h-6"/></svg></button>
+      </div>
+      <div class="liste" id="liste"></div>
+    </section>
+
+    <section class="lecture" id="lecture" hidden>
+      <div class="lecture-outils">
+        <button class="ic-btn" id="btn-retour" title="Retour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></button>
+        <button class="ic-btn" data-act="archiver" title="Archiver"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></button>
+        <button class="ic-btn" data-act="lu" title="Marquer comme lu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></button>
+        <span style="flex:1"></span>
+        <a class="ic-btn" id="lien-externe" target="_blank" rel="noopener" title="Ouvrir dans la messagerie" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+      <div class="lecture-corps" id="lecture-corps"></div>
+    </section>
+  </div>
+</div>
+
+<!-- ══════════════ COUCHE AGENT ══════════════ -->
+<div id="trainee"></div>
+<div id="curseur">
+  <svg class="fleche" viewBox="0 0 17 19" aria-hidden="true">
+    <path d="M1.2 1.1 15.4 9.6l-6.1 1.3-2.6 6.2L1.2 1.1z" fill="currentColor" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/>
+  </svg>
+  <span class="tag">Agent France IA</span>
+  <div class="bulle" id="bulle">Analyse…</div>
+  <div class="ouverture" id="ouverture"></div>
+</div>
+<div id="curseur-vous"><span class="tag">Vous</span></div>
+<div id="projecteur"></div>
+
+<aside id="dock">
+  <div class="dock-journal"><div class="journal" id="journal"></div></div>
+  <div class="dock-barre">
+    <div class="dock-etat" id="dock-etat">
+      <span class="led"></span>
+      <span class="t">Agent<small id="dock-sous">en veille</small></span>
+    </div>
+    <div class="mis" id="missions">
+      <button data-mission="profil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Me connaître</button>
+      <button data-mission="tri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 6h18M6 12h12M10 18h4"/></svg>Trier la boîte</button>
+      <button data-mission="resume"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16M4 10h16M4 15h9"/><circle cx="18" cy="17" r="3"/></svg>Résumé du jour</button>
+      <button data-mission="brouillons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="m14 6 4 4"/></svg>Rédiger les réponses</button>
+      <button data-mission="nettoyage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 7h14l-1 13H6L5 7z"/><path d="M9 7V4h6v3"/></svg>Ranger les diffusions</button>
+    </div>
+    <div class="dock-chiffres">
+      <div><div class="v" id="n-traites">0</div><div class="k">Traités</div></div>
+      <div><div class="v" id="n-brouillons">0</div><div class="k">Brouillons</div></div>
+      <div><div class="v" id="n-temps">0′</div><div class="k">Gagnées</div></div>
+    </div>
+    <div class="dock-actions">
+      <button id="btn-stop" class="stop" title="Arrêter l'agent (Échap)" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
+      <button id="btn-journal" title="Journal d'exécution"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
+    </div>
+    <div class="jauge"><i id="jauge"></i></div>
+  </div>
+</aside>
+
+<div class="voile" id="voile"><div class="modale" id="modale"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   1 · CONFIGURATION, ÉTAT, UTILITAIRES
+   Renseignez les deux identifiants OAuth une fois avant distribution
+   (voir README.md). Ils peuvent aussi être saisis dans « Réglages ».
+   ══════════════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  // Accès au moteur SANS clé pour l'apprenant : un relais hébergé par France IA
+  // détient la clé Anthropic et la substitue aux requêtes. Voir relais/worker.js.
+  relaisUrl: '',                      // ex. https://agent-mail.franceia.workers.dev
+  relaisCode: '',                     // code d'accès distribué avec l'outil
+  googleClientId: '',                 // ...apps.googleusercontent.com
+  microsoftClientId: '',              // GUID de l'inscription d'application
+  microsoftTenant: 'common',
+  moteur: 'claude',                   // moteur par défaut : 'claude' ou 'chatgpt'
+  modeles: {claude:'claude-opus-5', chatgpt:'gpt-5'}
+};
+const CONFIG_LOCALE = lireJSON('fia-agent-mail-config') || {};   // réglages saisis par l'utilisateur
+const REGLAGES = Object.assign({}, CONFIG, CONFIG_LOCALE);
+/* config.json, déposé à côté de ce fichier, permet de configurer l'outil sans
+   toucher au code. Il ne prend jamais le pas sur les réglages de l'utilisateur. */
+async function chargerConfigFichier(){
+  try{
+    const r=await fetch('config.json',{cache:'no-store'});
+    if(!r.ok) return;
+    const c=await r.json();
+    ['relaisUrl','relaisCode','googleClientId','microsoftClientId','microsoftTenant','moteur'].forEach(k=>{
+      if(c[k] && CONFIG_LOCALE[k]===undefined) REGLAGES[k]=c[k];
+    });
+    if(c.modeles && CONFIG_LOCALE.modeles===undefined) REGLAGES.modeles=Object.assign({},REGLAGES.modeles,c.modeles);
+    if(REGLAGES.moteur) S.moteur=REGLAGES.moteur;
+    if(REGLAGES.modeles) S.modeles=Object.assign({},S.modeles,REGLAGES.modeles);
+  }catch(e){ /* pas de config.json : on reste sur les valeurs du fichier */ }
+}
+
+const SCOPES_GOOGLE = 'https://www.googleapis.com/auth/gmail.modify';
+const SCOPES_MS = 'openid profile offline_access User.Read Mail.ReadWrite';
+const CATEGORIES = {
+  'Action requise':   {classe:'rouge',    minutes:4},
+  'À répondre':       {classe:'ambre',    minutes:5},
+  'Pour information': {classe:'bleue',    minutes:2},
+  'Newsletter':       {classe:'',         minutes:1},
+  'Administratif':    {classe:'verte',    minutes:3},
+  'Indésirable':      {classe:'violette', minutes:1}
+};
+const SKINS = {
+  gmail:   {nom:'Gmail',   composer:'Nouveau message', recherche:'Rechercher dans les messages',
+            reception:'Boîte de réception'},
+  outlook: {nom:'Outlook', composer:'Nouveau courrier', recherche:'Rechercher',
+            reception:'Boîte de réception'}
+};
+
+const S = {
+  fournisseur:null, skin:'gmail', compte:{email:'',nom:''}, messages:[], selection:null,
+  dossier:'reception', recherche:'', vitesse:2,   // cadence fixe, réglée pour être lisible
+  stats:{traites:0, brouillons:0, minutes:0},
+  actif:false, stop:false, cleValide:false, profil:null,
+  moteur:REGLAGES.moteur||'claude',
+  cles:lireJSON('fia-agent-mail-cles')||{claude:localStorage.getItem('fia-agent-mail-cle')||'',chatgpt:''},
+  modeles:Object.assign({claude:'claude-opus-5',chatgpt:'gpt-5'}, REGLAGES.modeles||{})
+};
+
+function $(s,r){return (r||document).querySelector(s)}
+function $$(s,r){return Array.from((r||document).querySelectorAll(s))}
+function lireJSON(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
+function ecrireJSON(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function ech(t){const d=document.createElement('div');d.textContent=t==null?'':String(t);return d.innerHTML}
+function initiales(n){return (n||'?').trim().split(/\s+/).slice(0,2).map(m=>m[0]).join('').toUpperCase()}
+function dors(ms){return new Promise(r=>setTimeout(r,ms))}
+function pause(ms){return dors(Math.max(40, ms/S.vitesse))}
+function couleur(s){let h=0; for(const c of (s||'x')) h=(h*31+c.charCodeAt(0))%360; return 'hsl('+h+',52%,44%)'}
+function dateCourte(iso){
+  const d=new Date(iso), n=new Date();
+  if(d.toDateString()===n.toDateString()) return d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  const h=new Date(n); h.setDate(n.getDate()-1);
+  if(d.toDateString()===h.toDateString()) return 'hier';
+  return d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),3400)}
+function nettoieHtml(html){
+  const d=document.createElement('div'); d.innerHTML=html;
+  d.querySelectorAll('style,script,head,meta,link').forEach(n=>n.remove());
+  return (d.textContent||'').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ').trim();
+}
+function b64urlVersTexte(s){
+  const b=atob(s.replace(/-/g,'+').replace(/_/g,'/'));
+  const u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(u);
+}
+function texteVersB64url(s){
+  const u=new TextEncoder().encode(s); let b='';
+  u.forEach(c=>b+=String.fromCharCode(c));
+  return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function sujetMime(s){return /^[\x20-\x7E]*$/.test(s) ? s : '=?UTF-8?B?'+btoa(String.fromCharCode(...new TextEncoder().encode(s)))+'?='}
+
+const LOGOS = {
+  gmail:'<svg viewBox="0 0 24 24" style="width:26px;height:26px"><path fill="#EA4335" d="M2 6.5 12 13l10-6.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v.5z"/><path fill="#FBBC04" d="M2 6.5V18a2 2 0 0 0 2 2h2V9.2L2 6.5z"/><path fill="#34A853" d="M18 20h2a2 2 0 0 0 2-2V6.5l-4 2.7V20z"/><path fill="#C5221F" d="M6 20V9.2l6 3.9 6-3.9V20H6z" opacity=".22"/><path fill="#4285F4" d="M6 20h12V9.2l-6 3.9-6-3.9V20z"/></svg>',
+  outlook:'<svg viewBox="0 0 24 24" style="width:22px;height:22px"><path fill="#fff" d="M13 4.6 21.5 3v8.2H13V4.6zM13 12.8h8.5V21L13 19.4v-6.6z" opacity=".85"/><path fill="#fff" d="M2.5 6.3 11.5 4.8v6.4h-9V6.3zM2.5 12.8h9v6.4L2.5 17.7v-4.9z"/></svg>'
+};
+function appliquerSkin(skin){
+  S.skin=skin;
+  document.documentElement.dataset.skin=skin;
+  $('#logo-skin').innerHTML=LOGOS[skin];
+  $('#nom-skin').textContent=SKINS[skin].nom;
+  $('#txt-composer').textContent=SKINS[skin].composer;
+  $('#recherche').placeholder=SKINS[skin].recherche;
+  document.title='Agent Mail · '+SKINS[skin].nom;
+}
+/* ══════════════════════════════════════════════════════════════════════════
+   2 · FOURNISSEURS DE MESSAGERIE
+   Interface commune : connecter, profil, lister, listerEnvoyes, corps,
+   marquerLu, archiver, etiqueter, creerBrouillon.
+   Aucune donnée fictive : l'outil ne fonctionne que sur une vraie boîte.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 3b · Gmail ──────────────────────────────────────────────────────────────
+   Deux temps, comme le prescrit Google :
+   1. IDENTITÉ — le bouton officiel « Se connecter avec Google » (GIS) renvoie un
+      jeton d'identité signé : on sait qui est l'utilisateur, avec son nom et sa photo.
+   2. AUTORISATION — une seconde demande, explicite, ouvre l'accès à la boîte.
+   ────────────────────────────────────────────────────────────────────────── */
+const Google = {
+  id:'google', nom:'Gmail', jeton:null, _client:null, _labels:{}, _identite:null,
+  async _script(){
+    if(window.google&&google.accounts&&google.accounts.id&&google.accounts.oauth2) return;
+    if(!this._chargement) this._chargement = new Promise((ok,ko)=>{
+      const s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client';
+      s.async=true; s.defer=true; s.onload=ok;
+      s.onerror=()=>ko(new Error("Le script d'identité Google n'a pas pu être chargé."));
+      document.head.appendChild(s);
+    });
+    return this._chargement;
+  },
+  /* Affiche le bouton officiel de Google, rendu par Google lui-même. */
+  async afficherBouton(conteneur, surIdentite){
+    const cid=REGLAGES.googleClientId;
+    if(!cid) throw new Error("Identifiant client Google non configuré.");
+    await this._script();
+    google.accounts.id.initialize({
+      client_id:cid,
+      callback:(r)=>{ if(r&&r.credential) surIdentite(this._lireJeton(r.credential)) },
+      auto_select:false, cancel_on_tap_outside:true, use_fedcm_for_prompt:true, context:'signin'
+    });
+    google.accounts.id.renderButton(conteneur,{
+      type:'standard', theme:'outline', size:'large', text:'signin_with',
+      shape:'rectangular', logo_alignment:'center', locale:'fr', width:360
+    });
+  },
+  proposerUnClic(){ try{ google.accounts.id.prompt() }catch(e){} },
+  _lireJeton(jwt){
+    const p=JSON.parse(b64urlVersTexte(jwt.split('.')[1]));
+    this._identite={email:p.email, nom:p.name||p.email, photo:p.picture||'', sub:p.sub};
+    return this._identite;
+  },
+  /* Demande d'accès à la boîte : écran Google, cases à cocher comprises. */
+  async autoriser(indice){
+    const cid=REGLAGES.googleClientId;
+    if(!cid) throw new Error("Aucun identifiant client Google n'est configuré. Ouvrez « Réglages » pour le renseigner.");
+    if(location.protocol==='file:') throw new Error("La connexion Google exige une adresse https. Ouvrez l'outil depuis son adresse en ligne plutôt que depuis le fichier local.");
+    await this._script();
+    const jeton=await new Promise((ok,ko)=>{
+      this._client=google.accounts.oauth2.initTokenClient({
+        client_id:cid, scope:SCOPES_GOOGLE, hint:indice||'',
+        callback:(r)=> r&&r.access_token ? ok(r.access_token) : ko(new Error((r&&r.error_description)||"Accès à la boîte refusé.")),
+        error_callback:(e)=> ko(new Error(e&&e.type==='popup_closed' ? "Fenêtre fermée avant la fin." : "Autorisation interrompue."))
+      });
+      this._client.requestAccessToken({prompt:indice?'':'consent'});
+    });
+    this.jeton=jeton; return true;
+  },
+  /* Reprise silencieuse : si l'accès a déjà été accordé, aucun écran ne s'affiche. */
+  async reprendre(email){
+    await this._script();
+    return new Promise((ok)=>{
+      this._client=google.accounts.oauth2.initTokenClient({
+        client_id:REGLAGES.googleClientId, scope:SCOPES_GOOGLE, hint:email||'',
+        callback:(r)=>{ if(r&&r.access_token){ this.jeton=r.access_token; ok(true) } else ok(false) },
+        error_callback:()=>ok(false)
+      });
+      this._client.requestAccessToken({prompt:''});
+    });
+  },
+  async connecter(){ return this.autoriser(this._identite&&this._identite.email) },
+  async _api(chemin, opts){
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me'+chemin, Object.assign({},opts,{
+      headers:Object.assign({'Authorization':'Bearer '+this.jeton,'Content-Type':'application/json'},(opts||{}).headers)
+    }));
+    if(r.status===401){ this.jeton=null; throw new Error("Session Google expirée : reconnectez votre messagerie."); }
+    if(!r.ok){ const t=await r.text(); throw new Error('Gmail ('+r.status+') : '+t.slice(0,160)); }
+    return r.status===204?null:r.json();
+  },
+  async profil(){
+    if(this._identite&&this._identite.email) return this._identite;
+    const p=await this._api('/profile');
+    return {email:p.emailAddress, nom:p.emailAddress.split('@')[0], photo:''};
+  },
+  async lister(max){
+    const l = await this._api('/messages?maxResults='+(max||25)+'&q='+encodeURIComponent('in:inbox'));
+    const ids = (l.messages||[]).map(m=>m.id); const out=[];
+    for(let i=0;i<ids.length;i+=6){
+      const lot = await Promise.all(ids.slice(i,i+6).map(id=>
+        this._api('/messages/'+id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID')));
+      lot.forEach(m=>{
+        const h={}; (m.payload.headers||[]).forEach(x=>h[x.name.toLowerCase()]=x.value);
+        const from=h.from||''; const mt=from.match(/^\s*"?([^"<]*)"?\s*<?([^>]*)>?/);
+        out.push({
+          id:m.id, threadId:m.threadId,
+          expNom:(mt&&mt[1]||'').trim()||(mt&&mt[2]||from), expMail:(mt&&mt[2]||from).trim(),
+          objet:h.subject||'(sans objet)', extrait:(m.snippet||'').slice(0,140),
+          date:new Date(Number(m.internalDate)).toISOString(), nonlu:(m.labelIds||[]).includes('UNREAD'),
+          messageId:h['message-id']||null, corps:null, categorie:null, resume:null,
+          brouillon:null, draftId:null, archive:false, traite:false
+        });
+      });
+    }
+    return out;
+  },
+  _texte(m){
+    const morceaux=[];
+    (function creuse(p){ if(!p) return;
+      if(p.body&&p.body.data&&(p.mimeType==='text/plain'||p.mimeType==='text/html')) morceaux.push({t:p.mimeType,d:p.body.data});
+      (p.parts||[]).forEach(creuse);
+    })(m.payload);
+    const plat = morceaux.find(x=>x.t==='text/plain');
+    if(plat) return b64urlVersTexte(plat.d).trim();
+    if(morceaux[0]) return nettoieHtml(b64urlVersTexte(morceaux[0].d));
+    return m.snippet||'';
+  },
+  async corps(id){ return this._texte(await this._api('/messages/'+id+'?format=full')) },
+  /* Messages envoyés : c'est là que se lit la voix de l'utilisateur. */
+  async listerEnvoyes(max){
+    const l=await this._api('/messages?maxResults='+(max||12)+'&q='+encodeURIComponent('in:sent -in:chats'));
+    const ids=(l.messages||[]).map(m=>m.id), out=[];
+    for(let i=0;i<ids.length;i+=5){
+      const lot=await Promise.all(ids.slice(i,i+5).map(id=>this._api('/messages/'+id+'?format=full')));
+      lot.forEach(m=>{
+        const h={}; (m.payload.headers||[]).forEach(x=>h[x.name.toLowerCase()]=x.value);
+        out.push({objet:h.subject||'', a:h.to||'', date:new Date(Number(m.internalDate)).toISOString(), texte:this._texte(m)});
+      });
+    }
+    return out;
+  },
+  async marquerLu(id){ await this._api('/messages/'+id+'/modify',{method:'POST',body:JSON.stringify({removeLabelIds:['UNREAD']})}); return true },
+  async archiver(id){ await this._api('/messages/'+id+'/modify',{method:'POST',body:JSON.stringify({removeLabelIds:['INBOX']})}); return true },
+  async _label(nom){
+    const cle='Agent/'+nom;
+    if(this._labels[cle]) return this._labels[cle];
+    const l = await this._api('/labels');
+    let t = (l.labels||[]).find(x=>x.name===cle);
+    if(!t) t = await this._api('/labels',{method:'POST',body:JSON.stringify({name:cle,labelListVisibility:'labelShow',messageListVisibility:'show'})});
+    this._labels[cle]=t.id; return t.id;
+  },
+  async etiqueter(id,e){ const lid=await this._label(e); await this._api('/messages/'+id+'/modify',{method:'POST',body:JSON.stringify({addLabelIds:[lid]})}); return true },
+  async creerBrouillon(msg,texte){
+    const objet = /^re\s*:/i.test(msg.objet)? msg.objet : 'Re: '+msg.objet;
+    const entetes = [
+      'To: '+msg.expMail, 'Subject: '+sujetMime(objet),
+      msg.messageId? 'In-Reply-To: '+msg.messageId : null,
+      msg.messageId? 'References: '+msg.messageId : null,
+      'Content-Type: text/plain; charset="UTF-8"','MIME-Version: 1.0'
+    ].filter(Boolean).join('\r\n');
+    const d = await this._api('/drafts',{method:'POST',body:JSON.stringify({message:{threadId:msg.threadId,raw:texteVersB64url(entetes+'\r\n\r\n'+texte)}})});
+    return d.id;
+  },
+  lienExterne(msg){ return 'https://mail.google.com/mail/u/0/#inbox/'+msg.threadId },
+  async deconnecter(){
+    if(this.jeton && window.google) try{ google.accounts.oauth2.revoke(this.jeton) }catch(e){}
+    try{ google.accounts.id.disableAutoSelect() }catch(e){}
+    this.jeton=null; this._identite=null;
+  }
+};
+
+/* ── 3c · Outlook / Microsoft 365 (OAuth 2.0 + PKCE) ─────────────────────── */
+const Microsoft = {
+  id:'microsoft', nom:'Outlook', jeton:null, _identite:null,
+  _redirection(){ return location.origin+location.pathname },
+  async _pkce(){
+    const tab=new Uint8Array(48); crypto.getRandomValues(tab);
+    const verif=btoa(String.fromCharCode(...tab)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    const hash=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verif));
+    const defi=btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    return {verif,defi};
+  },
+  async connecter(){
+    const cid=REGLAGES.microsoftClientId;
+    if(!cid) throw new Error("Aucun identifiant d'application Microsoft n'est configuré. Ouvrez « Réglages » pour le renseigner.");
+    if(location.protocol==='file:') throw new Error("La connexion Microsoft exige une adresse https. Ouvrez l'outil depuis son adresse en ligne plutôt que depuis le fichier local.");
+    const {verif,defi}=await this._pkce();
+    const etat=Math.random().toString(36).slice(2);
+    sessionStorage.setItem('fia-ms-pkce',verif); sessionStorage.setItem('fia-ms-etat',etat);
+    const u=new URL('https://login.microsoftonline.com/'+(REGLAGES.microsoftTenant||'common')+'/oauth2/v2.0/authorize');
+    u.search=new URLSearchParams({client_id:cid,response_type:'code',redirect_uri:this._redirection(),
+      response_mode:'query',scope:SCOPES_MS,state:etat,code_challenge:defi,code_challenge_method:'S256',prompt:'select_account'});
+    location.assign(u.toString());
+    await new Promise(()=>{}); // la page part en redirection
+  },
+  async reprendreRedirection(){
+    const p=new URLSearchParams(location.search);
+    const code=p.get('code'), etat=p.get('state'), err=p.get('error');
+    if(err){ history.replaceState({},'',location.pathname); throw new Error('Microsoft : '+(p.get('error_description')||err)) }
+    if(!code) return false;
+    const verif=sessionStorage.getItem('fia-ms-pkce');
+    if(etat!==sessionStorage.getItem('fia-ms-etat')||!verif){ history.replaceState({},'',location.pathname); throw new Error("Réponse Microsoft inattendue : connexion annulée.") }
+    const r=await fetch('https://login.microsoftonline.com/'+(REGLAGES.microsoftTenant||'common')+'/oauth2/v2.0/token',{
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({client_id:REGLAGES.microsoftClientId,grant_type:'authorization_code',code,
+        redirect_uri:this._redirection(),code_verifier:verif})});
+    history.replaceState({},'',location.pathname);
+    sessionStorage.removeItem('fia-ms-pkce'); sessionStorage.removeItem('fia-ms-etat');
+    const d=await r.json();
+    if(!r.ok) throw new Error('Microsoft : '+(d.error_description||d.error||'échange de jeton refusé'));
+    this._garder(d); return true;
+  },
+  /* Le jeton d'identité dit qui s'est connecté ; le jeton de rafraîchissement
+     permet de reprendre la session sans repasser par Microsoft. */
+  _garder(d){
+    this.jeton=d.access_token;
+    if(d.refresh_token) try{ sessionStorage.setItem('fia-ms-refresh',d.refresh_token) }catch(e){}
+    if(d.id_token){
+      try{
+        const p=JSON.parse(b64urlVersTexte(d.id_token.split('.')[1]));
+        this._identite={email:p.preferred_username||p.email||'', nom:p.name||p.preferred_username||'', photo:'', sub:p.sub};
+      }catch(e){}
+    }
+  },
+  async reprendre(){
+    const rt=sessionStorage.getItem('fia-ms-refresh');
+    if(!rt||!REGLAGES.microsoftClientId) return false;
+    const r=await fetch('https://login.microsoftonline.com/'+(REGLAGES.microsoftTenant||'common')+'/oauth2/v2.0/token',{
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({client_id:REGLAGES.microsoftClientId,grant_type:'refresh_token',
+        refresh_token:rt, scope:SCOPES_MS})});
+    if(!r.ok){ sessionStorage.removeItem('fia-ms-refresh'); return false }
+    this._garder(await r.json()); return true;
+  },
+  async _api(chemin,opts){
+    const r=await fetch('https://graph.microsoft.com/v1.0'+chemin,Object.assign({},opts,{
+      headers:Object.assign({'Authorization':'Bearer '+this.jeton,'Content-Type':'application/json'},(opts||{}).headers)}));
+    if(r.status===401){ this.jeton=null; throw new Error("Session Microsoft expirée : reconnectez votre messagerie."); }
+    if(!r.ok){ const t=await r.text(); throw new Error('Graph ('+r.status+') : '+t.slice(0,160)); }
+    return r.status===204?null:r.json();
+  },
+  async profil(){
+    if(this._identite&&this._identite.email) return this._identite;
+    const p=await this._api('/me');
+    return {email:p.mail||p.userPrincipalName, nom:p.displayName||'', photo:''};
+  },
+  async lister(max){
+    const d=await this._api('/me/mailFolders/inbox/messages?$top='+(max||25)+
+      '&$select=id,conversationId,subject,from,receivedDateTime,isRead,bodyPreview,categories&$orderby=receivedDateTime desc');
+    return (d.value||[]).map(m=>({
+      id:m.id, threadId:m.conversationId,
+      expNom:(m.from&&m.from.emailAddress&&m.from.emailAddress.name)||'', expMail:(m.from&&m.from.emailAddress&&m.from.emailAddress.address)||'',
+      objet:m.subject||'(sans objet)', extrait:(m.bodyPreview||'').slice(0,140),
+      date:m.receivedDateTime, nonlu:!m.isRead, corps:null,
+      categorie:(m.categories&&m.categories[0])||null, resume:null, brouillon:null, draftId:null, archive:false, traite:false
+    }));
+  },
+  async corps(id){
+    const m=await this._api('/me/messages/'+encodeURIComponent(id)+'?$select=body');
+    if(!m.body) return '';
+    return m.body.contentType==='html'? nettoieHtml(m.body.content) : (m.body.content||'').trim();
+  },
+  async listerEnvoyes(max){
+    const d=await this._api('/me/mailFolders/sentitems/messages?$top='+(max||12)+
+      '&$select=subject,toRecipients,sentDateTime,body&$orderby=sentDateTime desc');
+    return (d.value||[]).map(m=>({
+      objet:m.subject||'', a:(m.toRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean).join(', '),
+      date:m.sentDateTime,
+      texte:m.body? (m.body.contentType==='html'? nettoieHtml(m.body.content) : (m.body.content||'')) : ''
+    }));
+  },
+  async marquerLu(id){ await this._api('/me/messages/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({isRead:true})}); return true },
+  async archiver(id){ await this._api('/me/messages/'+encodeURIComponent(id)+'/move',{method:'POST',body:JSON.stringify({destinationId:'archive'})}); return true },
+  async etiqueter(id,e){ await this._api('/me/messages/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({categories:['Agent — '+e]})}); return true },
+  async creerBrouillon(msg,texte){
+    const rep=await this._api('/me/messages/'+encodeURIComponent(msg.id)+'/createReply',{method:'POST',body:'{}'});
+    await this._api('/me/messages/'+encodeURIComponent(rep.id),{method:'PATCH',
+      body:JSON.stringify({body:{contentType:'Text',content:texte}})});
+    return rep.id;
+  },
+  lienExterne(){ return 'https://outlook.office.com/mail/inbox' },
+  async deconnecter(){
+    this.jeton=null; this._identite=null;
+    try{ sessionStorage.removeItem('fia-ms-refresh') }catch(e){}
+  }
+};
+
+const FOURNISSEURS = {google:Google, microsoft:Microsoft};
+function F(){ return FOURNISSEURS[S.fournisseur] }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4 · MOTEUR CLAUDE (appel direct depuis le navigateur)
+   ══════════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════
+   3 · LE MOTEUR : Claude ou ChatGPT, par relais ou par clé personnelle
+   ──────────────────────────────────────────────────────────────────────────
+   · Relais France IA : l'apprenant n'a rien à configurer, la clé reste côté
+     serveur (voir relais/worker.js) ;
+   · clé personnelle : appel direct depuis le navigateur, rien n'est relayé.
+   La clé personnelle, quand elle existe, l'emporte sur le relais.
+   ══════════════════════════════════════════════════════════════════════════ */
+const MOTEURS = {
+  claude:  {nom:'Claude',  url:'https://api.anthropic.com/v1/messages',
+            modeles:['claude-opus-5','claude-sonnet-5','claude-haiku-4-5'], defaut:'claude-opus-5'},
+  chatgpt: {nom:'ChatGPT', url:'https://api.openai.com/v1/chat/completions',
+            modeles:['gpt-5','gpt-5-mini','gpt-4.1','o4-mini'], defaut:'gpt-5'}
+};
+function cleCourante(){ return S.cles[S.moteur]||'' }
+function modeleCourant(){ return S.modeles[S.moteur]||MOTEURS[S.moteur].defaut }
+function moteurDispo(){ return !!(cleCourante() || REGLAGES.relaisUrl) }
+function moteurNom(){
+  const m=MOTEURS[S.moteur].nom;
+  return cleCourante() ? m+' · votre clé' : (REGLAGES.relaisUrl ? m+' · accès France IA' : 'non configuré');
+}
+
+const Moteur = {
+  _cible(){
+    const cle=cleCourante(), conf=MOTEURS[S.moteur];
+    if(cle){
+      const entetes = S.moteur==='claude'
+        ? {'content-type':'application/json','x-api-key':cle,'anthropic-version':'2023-06-01',
+           'anthropic-dangerous-direct-browser-access':'true'}
+        : {'content-type':'application/json','authorization':'Bearer '+cle};
+      return {url:conf.url, entetes};
+    }
+    if(REGLAGES.relaisUrl) return {url:REGLAGES.relaisUrl, relais:true, entetes:{
+      'content-type':'application/json','x-code-acces':REGLAGES.relaisCode||'','x-moteur':S.moteur}};
+    return null;
+  },
+  _corps({systeme, invite, maxTokens, effort, flux}){
+    const modele=modeleCourant();
+    if(S.moteur==='claude'){
+      const base={model:modele, max_tokens:maxTokens||2000, stream:!!flux,
+                  system:systeme, messages:[{role:'user',content:invite}]};
+      // Haiku 4.5 n'accepte ni la pensée adaptative ni le réglage d'effort.
+      if(!modele.startsWith('claude-haiku'))
+        Object.assign(base,{thinking:{type:'adaptive',display:'summarized'},output_config:{effort:effort||'low'}});
+      return base;
+    }
+    return {model:modele, stream:!!flux, max_completion_tokens:maxTokens||2000,
+            messages:[{role:'system',content:systeme},{role:'user',content:invite}]};
+  },
+  async _erreur(r, relais){
+    let d=''; try{ const j=await r.json(); d=(j.error&&(j.error.message||j.error))||j.message||'' }catch(e){}
+    if(typeof d!=='string') d=JSON.stringify(d);
+    if(relais){
+      if(r.status===401||r.status===403) return new Error("Accès France IA refusé : le code de la session a peut-être expiré. Vous pouvez saisir votre propre clé dans les réglages.");
+      if(r.status===429) return new Error("Le quota partagé de l'accès France IA est atteint pour aujourd'hui. Réessayez demain, ou utilisez votre propre clé.");
+      return new Error('Relais France IA : '+(d||('erreur '+r.status)));
+    }
+    if(r.status===401){ S.cleValide=false; majEtatMoteur(); return new Error("Clé "+MOTEURS[S.moteur].nom+" refusée : vérifiez-la dans les réglages."); }
+    if(r.status===404||/model/i.test(d)) return new Error("Modèle « "+modeleCourant()+" » indisponible sur ce compte : changez-le dans les réglages. ("+d.slice(0,80)+")");
+    return new Error(MOTEURS[S.moteur].nom+' : '+(d||('erreur '+r.status)));
+  },
+  /* Flux unifié : quel que soit le moteur, on rend le texte au fil de l'eau. */
+  async appel({systeme, invite, maxTokens, effort, onDelta, onPensee}){
+    const cible=this._cible();
+    if(!cible) throw new Error("Aucun accès au moteur : ouvrez les réglages pour choisir Claude ou ChatGPT et saisir une clé.");
+    const r=await fetch(cible.url,{method:'POST', headers:cible.entetes,
+      body:JSON.stringify(this._corps({systeme,invite,maxTokens,effort,flux:true}))});
+    if(!r.ok) throw await this._erreur(r, cible.relais);
+    const lecteur=r.body.getReader(), dec=new TextDecoder();
+    let tampon='', texte='', pensee='';
+    while(true){
+      const {value,done}=await lecteur.read(); if(done) break;
+      tampon+=dec.decode(value,{stream:true});
+      const lignes=tampon.split('\n'); tampon=lignes.pop();
+      for(const l of lignes){
+        if(!l.startsWith('data:')) continue;
+        const brut=l.slice(5).trim(); if(!brut||brut==='[DONE]') continue;
+        let e; try{ e=JSON.parse(brut) }catch(err){ continue }
+        if(S.moteur==='claude'){
+          if(e.type==='content_block_delta'&&e.delta){
+            if(e.delta.type==='text_delta'){ texte+=e.delta.text; if(onDelta) onDelta(e.delta.text,texte) }
+            if(e.delta.type==='thinking_delta'&&onPensee){ pensee+=e.delta.thinking||''; onPensee(pensee) }
+          }
+          if(e.type==='error') throw new Error('Claude : '+((e.error&&e.error.message)||'flux interrompu'));
+        }else{
+          const bout=e.choices&&e.choices[0]&&e.choices[0].delta&&e.choices[0].delta.content;
+          if(bout){ texte+=bout; if(onDelta) onDelta(bout,texte) }
+          if(e.error) throw new Error('ChatGPT : '+(e.error.message||'flux interrompu'));
+        }
+      }
+    }
+    return texte.trim();
+  },
+  async verifierCle(moteur, cle){
+    const conf=MOTEURS[moteur];
+    const entetes = moteur==='claude'
+      ? {'content-type':'application/json','x-api-key':cle,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'}
+      : {'content-type':'application/json','authorization':'Bearer '+cle};
+    const modele=S.modeles[moteur]||conf.defaut;
+    const corps = moteur==='claude'
+      ? {model:modele,max_tokens:16,messages:[{role:'user',content:'Répondez : prêt.'}]}
+      : {model:modele,max_completion_tokens:16,messages:[{role:'user',content:'Répondez : prêt.'}]};
+    const r=await fetch(conf.url,{method:'POST',headers:entetes,body:JSON.stringify(corps)});
+    if(r.ok) return true;
+    let m='erreur '+r.status; try{ const j=await r.json(); m=(j.error&&(j.error.message||j.error))||m }catch(e){}
+    throw new Error(typeof m==='string'?m:JSON.stringify(m));
+  },
+  /* Ping du relais, pour afficher un état honnête dès l'écran d'accueil. */
+  async verifierRelais(){
+    const r=await fetch(REGLAGES.relaisUrl,{method:'POST',
+      headers:{'content-type':'application/json','x-code-acces':REGLAGES.relaisCode||'','x-moteur':S.moteur},
+      body:JSON.stringify(this._corps({systeme:'',invite:'Répondez : prêt.',maxTokens:16,flux:false}))});
+    if(r.ok){ try{ await r.text() }catch(e){} return true }
+    throw await this._erreur(r, true);
+  }
+};
+
+function extraireJSON(t){
+  const d=t.indexOf('{'), f=t.lastIndexOf('}');
+  if(d<0||f<d) throw new Error('Réponse inattendue du moteur.');
+  return JSON.parse(t.slice(d,f+1));
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5 · LA COUCHE AGENT (curseur, projecteur, estampilles, console)
+   ══════════════════════════════════════════════════════════════════════════ */
+const Agent = {
+  el:null, bulle:null, trainee:null, proj:null, x:-100, y:-100,
+  init(){
+    this.el=$('#curseur'); this.bulle=$('#bulle'); this.trainee=$('#trainee');
+    this.proj=$('#projecteur'); this.ouv=$('#ouverture'); this.vous=$('#curseur-vous');
+    // Le curseur de l'utilisateur prend une étiquette pendant que l'agent travaille :
+    // on voit alors deux mains sur la même boîte.
+    document.addEventListener('mousemove',e=>{
+      this.vous.style.transform='translate3d('+e.clientX+'px,'+e.clientY+'px,0)';
+      if(S.actif){ this.vous.classList.add('on'); clearTimeout(this._tv);
+        this._tv=setTimeout(()=>this.vous.classList.remove('on'),2600) }
+    });
+  },
+  montrer(){ this.el.classList.add('on'); $('#dock').classList.add('on','ouvert') },
+  cacher(){
+    this.el.classList.remove('on','parle','ouvre'); this.proj.classList.remove('on');
+    this.trainee.style.opacity=0; this.vous.classList.remove('on');
+  },
+  dire(t){ this.bulle.textContent=t; this.el.classList.add('parle') },
+  taire(){ this.el.classList.remove('parle','ouvre') },
+  /* Petit menu qui s'ouvre au curseur : l'agent montre ce qu'il envisage,
+     puis ce qu'il retient. */
+  async choisir(titre, options, choisi){
+    this.ouv.innerHTML='<div class="titre">'+ech(titre)+'</div>'+
+      options.map(o=>'<div class="opt" data-o="'+ech(o)+'"><span class="rond"></span>'+ech(o)+'</div>').join('');
+    this.el.classList.add('ouvre');
+    await pause(420);
+    const cible=this.ouv.querySelector('[data-o="'+CSS.escape(choisi)+'"]');
+    if(cible) cible.classList.add('choisi');
+    await pause(520);
+    this.el.classList.remove('ouvre');
+    await pause(120);
+  },
+  /* Carte d'action : ce que l'agent vient de faire, à l'endroit où il l'a fait. */
+  async fait(texte, detail, ton){
+    this.ouv.innerHTML='<div class="fait'+(ton==='violet'?' violet':'')+'">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="m4 12 5 5L20 6"/></svg>'+
+      ech(texte)+'</div>'+(detail?'<div class="detail">'+ech(detail)+'</div>':'');
+    this.el.classList.add('ouvre');
+    await pause(700);
+    this.el.classList.remove('ouvre');
+  },
+  defiler(cible){
+    const c=cible.closest('.liste, .lecture-corps, .rail');
+    if(!c){ cible.scrollIntoView({block:'nearest'}); return }
+    const r=cible.getBoundingClientRect(), rc=c.getBoundingClientRect();
+    if(r.top>=rc.top+8 && r.bottom<=rc.bottom-8) return;
+    c.scrollTo({top:c.scrollTop+(r.top-rc.top)-(rc.height-r.height)/2, behavior:'smooth'});
+  },
+  async attendreDefilement(cible){
+    let avant=cible.getBoundingClientRect().top, stable=0;
+    for(let i=0;i<24;i++){
+      await dors(30);
+      const t=cible.getBoundingClientRect().top;
+      if(Math.abs(t-avant)<0.5){ if(++stable>=2) break } else stable=0;
+      avant=t;
+    }
+  },
+  /* Déplacement en courbe : le curseur ne saute pas d'un point à l'autre, il
+     décrit un arc, alternativement d'un côté puis de l'autre, avec une traînée
+     qui le suit avec un temps de retard. */
+  placer(x,y,duree){
+    const d=Math.max(260,(duree||620)/S.vitesse);
+    const x0=this.x, y0=this.y;
+    const dx=x-x0, dy=y-y0, dist=Math.hypot(dx,dy)||1;
+    this._sens=-(this._sens||1);
+    const bras=Math.min(110, dist*0.24)*this._sens;
+    const cx=(x0+x)/2 + (-dy/dist)*bras, cy=(y0+y)/2 + (dx/dist)*bras;
+    if(this.tx===undefined){ this.tx=x0; this.ty=y0 }
+    this.trainee.style.opacity='.7';
+    return new Promise(fini=>{
+      const t0=performance.now();
+      let termine=false;
+      const finir=()=>{ if(termine) return; termine=true;
+        this.el.style.transform='translate3d('+(x-2)+'px,'+(y-2)+'px,0)';
+        this.trainee.style.transform='translate3d('+x+'px,'+y+'px,0)';
+        this.tx=x; this.ty=y; this.x=x; this.y=y; fini();
+      };
+      // Onglet en arrière-plan : le navigateur suspend l'animation. On ne laisse
+      // pas la mission se bloquer pour autant.
+      const secours=setTimeout(finir, d+400);
+      const pas=(t)=>{
+        if(termine) return;
+        const p=Math.min(1,(t-t0)/d);
+        const e=p<.5 ? 4*p*p*p : 1-Math.pow(-2*p+2,3)/2;     // douceur aux deux bouts
+        const u=1-e;
+        const px=u*u*x0+2*u*e*cx+e*e*x, py=u*u*y0+2*u*e*cy+e*e*y;
+        this.el.style.transform='translate3d('+(px-2)+'px,'+(py-2)+'px,0)';
+        this.tx+=(px-this.tx)*0.16; this.ty+=(py-this.ty)*0.16;
+        this.trainee.style.transform='translate3d('+this.tx+'px,'+this.ty+'px,0)';
+        if(p<1) requestAnimationFrame(pas);
+        else { clearTimeout(secours); finir() }
+      };
+      requestAnimationFrame(pas);
+    });
+  },
+  /* Le cadre ne vise plus une position figée : il est collé à l'élément et le
+     suit à chaque image, donc il ne peut pas se retrouver à cheval entre deux
+     lignes, même si la liste défile ou se redessine. */
+  suivre(cible){
+    this._suivi=cible;
+    if(this._raf) return;
+    const boucle=()=>{
+      const e=this._suivi;
+      if(!e || !e.isConnected){ this.proj.classList.remove('on'); this._raf=null; return }
+      const r=e.getBoundingClientRect();
+      if(r.width>0 && r.height>0 && r.bottom>0 && r.top<innerHeight){
+        this.proj.style.left=Math.round(r.left)+'px';
+        this.proj.style.top=Math.round(r.top)+'px';
+        this.proj.style.width=Math.round(r.width)+'px';
+        this.proj.style.height=Math.round(r.height)+'px';
+        this.proj.style.borderRadius=getComputedStyle(e).borderRadius||'6px';
+        this.proj.classList.add('on');
+      } else this.proj.classList.remove('on');
+      this._raf=requestAnimationFrame(boucle);
+    };
+    this._raf=requestAnimationFrame(boucle);
+  },
+  eteindreProjecteur(){
+    this._suivi=null;
+    if(this._raf){ cancelAnimationFrame(this._raf); this._raf=null }
+    this.proj.classList.remove('on');
+  },
+  async allerVers(cible, texte, duree){
+    if(!cible) return;
+    this.defiler(cible);
+    await this.attendreDefilement(cible);
+    const r=cible.getBoundingClientRect();
+    this.suivre(cible);
+    if(texte) this.dire(texte);
+    await this.placer(r.left+Math.min(54,r.width*0.14), r.top+Math.min(26,r.height/2), duree);
+  },
+  estampille(texte, ton){
+    const e=document.createElement('div');
+    e.className='estampille'+(ton?' '+ton:'');
+    e.textContent=texte;
+    e.style.left=(this.x+34)+'px'; e.style.top=(this.y-30)+'px';
+    document.body.appendChild(e);
+    setTimeout(()=>e.remove(),1200);
+  }
+};
+
+function log(texte, type){
+  const j=$('#journal'), l=document.createElement('div');
+  l.className='jl '+(type||'');
+  l.innerHTML='<span class="pt"></span><span class="tx">'+texte+'</span><span class="hh">'+
+    new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+'</span>';
+  j.appendChild(l); j.scrollTop=j.scrollHeight;
+  while(j.children.length>160) j.removeChild(j.firstChild);
+}
+function chiffre(id, valeur){
+  const e=$(id); if(e.textContent===String(valeur)) return;
+  e.textContent=valeur; e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop');
+}
+function majStats(){
+  chiffre('#n-traites',S.stats.traites);
+  chiffre('#n-brouillons',S.stats.brouillons);
+  chiffre('#n-temps',S.stats.minutes+'′');
+}
+function jauge(fait,total){ $('#jauge').style.width=(total?Math.round(fait/total*100):0)+'%' }
+function etatAgent(texte, actif){
+  $('#dock-sous').textContent=texte;
+  $('#dock-etat').classList.toggle('actif',!!actif);
+  $('#btn-stop').disabled=!actif;
+  $$('#missions button').forEach(b=>b.disabled=!!actif);
+}
+function verifieArret(){ if(S.stop) throw {arret:true} }
+function reflexion(t){
+  const bout=(t||'').replace(/\s+/g,' ').trim();
+  if(!bout) return;
+  Agent.dire(bout.slice(-110));
+  $('#dock-sous').textContent='réflexion…';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6 · MISSIONS
+   ══════════════════════════════════════════════════════════════════════════ */
+/* ── Fiche de contexte : qui est l'utilisateur, comment il écrit ──────────
+   Établie à la première connexion en lisant ses messages envoyés et reçus,
+   conservée dans ce navigateur, modifiable à la main, et injectée dans chaque
+   consigne donnée au moteur. Sans elle, l'agent écrirait comme un inconnu. */
+function cleProfil(){ return 'fia-agent-mail-profil:'+(S.compte.email||'?') }
+function chargerProfil(){ S.profil=lireJSON(cleProfil()); return S.profil }
+function sauverProfil(){ if(S.profil) ecrireJSON(cleProfil(), S.profil) }
+function contexteUtilisateur(){
+  const p=S.profil; if(!p) return '';
+  const l=[];
+  if(p.identite) l.push('Identité : '+p.identite);
+  if(p.activite) l.push('Activité : '+p.activite);
+  if(p.role) l.push('Fonction : '+p.role);
+  if(p.ton) l.push('Ton habituel : '+p.ton);
+  if(p.longueur) l.push('Longueur habituelle : '+p.longueur);
+  if(p.formules&&p.formules.ouverture&&p.formules.ouverture.length) l.push('Ouvre souvent par : '+p.formules.ouverture.join(' / '));
+  if(p.formules&&p.formules.cloture&&p.formules.cloture.length) l.push('Termine souvent par : '+p.formules.cloture.join(' / '));
+  if(p.signature) l.push('Signature : '+p.signature);
+  if(p.interlocuteurs&&p.interlocuteurs.length) l.push('Interlocuteurs fréquents : '+p.interlocuteurs.join(', '));
+  if(p.sujets&&p.sujets.length) l.push('Sujets récurrents : '+p.sujets.join(', '));
+  if(p.consignes) l.push('Consignes de style : '+p.consignes);
+  return l.length ? "\n\nFiche de l'utilisateur, établie à partir de ses propres courriels — respectez sa voix, "+
+    "n'inventez rien qui n'y figure pas :\n"+l.join('\n') : '';
+}
+
+const SYS_PROFIL = "Vous établissez la fiche de contexte d'un professionnel à partir de ses courriels. "+
+  "Vous observez, vous ne jugez pas et vous n'inventez rien. Français, vouvoiement, aucun emoji. "+
+  "Vous ne répondez que par du JSON.";
+
+async function missionProfil(){
+  log("<b>Apprendre à vous connaître</b> — lecture de vos messages envoyés.",'ia');
+  Agent.dire('Lecture de vos messages envoyés');
+  const rail=$('.rail'); if(rail) await Agent.allerVers(rail,'Ouverture des envoyés',420);
+  let envoyes=[];
+  try{ envoyes=await F().listerEnvoyes(12) }
+  catch(e){ log("Messages envoyés illisibles : "+ech(e.message),'err') }
+  log(envoyes.length+' message'+(envoyes.length>1?'s':'')+' envoyé'+(envoyes.length>1?'s':'')+' analysé'+(envoyes.length>1?'s':'')+'.','');
+  jauge(1,3);
+
+  const recus=S.messages.slice(0,8);
+  let n=0;
+  for(const m of recus){
+    verifieArret();
+    const ligne=$('.ligne[data-id="'+CSS.escape(m.id)+'"]');
+    if(ligne) ligne.classList.add('scan');
+    await Agent.allerVers(ligne,'Lecture du contexte',260);
+    try{ await chargerCorps(m) }catch(e){}
+    if(ligne){ ligne.classList.remove('scan'); ligne.classList.add('fait'); setTimeout(()=>ligne.classList.remove('fait'),700) }
+    jauge(1+(++n)/recus.length,3);
+  }
+
+  Agent.eteindreProjecteur();
+  ouvrirProfil(true);
+  await Agent.allerVers($('#zone-profil'),'Portrait en cours');
+  const zone=$('#zone-profil'); zone.classList.add('ecrit');
+  const blocEnvoyes=envoyes.slice(0,12).map(e=>'— À '+(e.a||'?')+', objet « '+(e.objet||'')+' » :\n'+
+    (e.texte||'').slice(0,900)).join('\n\n');
+  const blocRecus=recus.map(m=>'— De '+m.expNom+' <'+m.expMail+'>, objet « '+m.objet+' » :\n'+
+    (m.corps||m.extrait||'').slice(0,500)).join('\n\n');
+  let brut='';
+  await Moteur.appel({
+    systeme:SYS_PROFIL, maxTokens:3000, effort:'medium', onPensee:reflexion,
+    invite:"Adresse de l'utilisateur : "+S.compte.email+(S.compte.nom?' ('+S.compte.nom+')':'')+
+      "\n\n=== MESSAGES QU'IL A ÉCRITS ===\n"+(blocEnvoyes||'(aucun message envoyé lisible)')+
+      "\n\n=== MESSAGES QU'IL REÇOIT ===\n"+blocRecus+
+      "\n\nRépondez par ce JSON exact, sans texte autour. Laissez une valeur vide plutôt que d'inventer :\n"+
+      '{"identite":"prénom nom tel qu\'il signe","activite":"son métier, son entreprise, en une ligne",'+
+      '"role":"sa fonction","ton":"description de sa façon d\'écrire en une phrase",'+
+      '"vouvoiement":true,"longueur":"courte|moyenne|longue",'+
+      '"formules":{"ouverture":["ses formules d\'ouverture réelles"],"cloture":["ses formules de clôture réelles"]},'+
+      '"signature":"son bloc de signature tel quel","interlocuteurs":["types d\'interlocuteurs"],'+
+      '"sujets":["sujets récurrents"],'+
+      '"consignes":"trois à cinq consignes que devrait suivre quelqu\'un qui écrit à sa place"}',
+    onDelta:(_,tout)=>{ brut=tout; zone.textContent=tout.replace(/[{}"]/g,'').slice(0,1200) }
+  });
+  zone.classList.remove('ecrit');
+  let d; try{ d=extraireJSON(brut) }
+  catch(e){ log("Fiche illisible : l'agent a répondu hors format.",'err'); return }
+  S.profil=d; sauverProfil();
+  await Agent.fait('Fiche établie', "L'agent écrira désormais avec votre voix", 'violet');
+  S.stats.minutes+=10; majStats(); jauge(3,3);
+  log('Fiche de contexte établie — l\'agent écrira désormais avec votre voix.','ok');
+  ouvrirProfil();
+}
+
+const SYS_TRI = "Vous êtes l'assistant de tri du courrier professionnel de "+
+  "l'utilisateur. Vous classez un message et n'écrivez rien d'autre que du JSON. "+
+  "Catégories autorisées : \"Action requise\" (une échéance ou une obligation pèse sur l'utilisateur), "+
+  "\"À répondre\" (une personne attend une réponse écrite), \"Administratif\" (facture, contrat, pièce comptable), "+
+  "\"Pour information\" (rien à faire), \"Newsletter\" (diffusion de masse), \"Indésirable\" (démarchage douteux, arnaque). "+
+  "Vouvoiement, français, aucun emoji.";
+
+async function classer(m){
+  const corps=(await chargerCorps(m)).slice(0,4000);
+  const t = await Moteur.appel({
+    systeme:SYS_TRI+contexteUtilisateur(), maxTokens:1600, effort:'low', onPensee:reflexion,
+    invite:"Message reçu :\nDe : "+m.expNom+" <"+m.expMail+">\nObjet : "+m.objet+"\n\n"+corps+
+      "\n\nRépondez par ce JSON exact, sans texte autour :\n"+
+      '{"categorie":"...","urgence":"haute|moyenne|basse","resume":"une phrase de 20 mots maximum","reponse_attendue":true|false}'
+  });
+  let d;
+  try{ d=extraireJSON(t) }
+  catch(e){ d={categorie:'Pour information', urgence:'basse', resume:t.replace(/\s+/g,' ').slice(0,90), reponse_attendue:false} }
+  if(!CATEGORIES[d.categorie]) d.categorie='Pour information';
+  return d;
+}
+
+async function missionTri(){
+  const cibles=S.messages.filter(m=>!m.archive&&(m.nonlu||!m.categorie));
+  if(!cibles.length){ toast('Rien à trier : tout est déjà classé.'); return }
+  log('<b>Trier la boîte</b> — '+cibles.length+' messages à examiner.','ia');
+  let n=0;
+  for(const m of cibles){
+    verifieArret();
+    const ligne=$('.ligne[data-id="'+CSS.escape(m.id)+'"]');
+    await Agent.allerVers(ligne,'Lecture du message');
+    if(ligne) ligne.classList.add('scan');
+    try{
+      const d=await classer(m);
+      m.categorie=d.categorie; m.resume=d.resume; m.urgence=d.urgence; m.reponseAttendue=!!d.reponse_attendue;
+      if(ligne) ligne.classList.remove('scan');
+      await Agent.choisir('Classement', Object.keys(CATEGORIES), d.categorie);
+      await F().etiqueter(m.id,d.categorie);
+      await Agent.fait('Étiqueté « '+d.categorie+' »', d.resume);
+      log('<b>'+ech(m.objet.slice(0,44))+'</b> → '+ech(d.categorie),'ia');
+      if(ligne){ ligne.classList.add('fait'); setTimeout(()=>ligne.classList.remove('fait'),700) }
+      const aLire=['Newsletter','Pour information','Indésirable','Administratif'].includes(d.categorie);
+      if(m.nonlu&&aLire){
+        await F().marquerLu(m.id); m.nonlu=false;
+        await Agent.fait('Marqué comme lu');
+        log('Marqué comme lu.','ok');
+      }
+      m.traite=true; S.stats.traites++; S.stats.minutes+=CATEGORIES[d.categorie].minutes;
+    }catch(e){
+      if(e&&e.arret) throw e;
+      if(ligne) ligne.classList.remove('scan');
+      log('Échec sur <b>'+ech(m.objet.slice(0,34))+'</b> : '+ech(e.message),'err');
+    }
+    majLigne(m); majStats(); jauge(++n,cibles.length); majCompteurs();
+    await pause(200);
+  }
+  log('Tri terminé — '+n+' messages examinés.','ok');
+}
+
+async function missionResume(){
+  const cibles=S.messages.filter(m=>!m.archive).slice(0,16);
+  if(!cibles.length){ toast('La boîte est vide.'); return }
+  log('<b>Résumé du jour</b> — lecture de '+cibles.length+' messages.','ia');
+  const blocs=[]; let n=0;
+  for(const m of cibles){
+    verifieArret();
+    const ligne=$('.ligne[data-id="'+CSS.escape(m.id)+'"]');
+    if(ligne) ligne.classList.add('scan');
+    await Agent.allerVers(ligne,'Lecture',300);
+    const corps=(await chargerCorps(m)).slice(0,1200);
+    blocs.push('— De '+m.expNom+' ('+m.expMail+'), le '+new Date(m.date).toLocaleDateString('fr-FR')+
+      ', objet « '+m.objet+' » :\n'+corps);
+    if(ligne){ ligne.classList.remove('scan'); ligne.classList.add('fait'); setTimeout(()=>ligne.classList.remove('fait'),700) }
+    jauge(++n,cibles.length+1);
+  }
+  Agent.eteindreProjecteur();
+  ouvrirSynthese();
+  await Agent.allerVers($('#zone-synthese'),'Rédaction de la synthèse');
+  const zone=$('#zone-synthese'); zone.classList.add('ecrit');
+  await Moteur.appel({
+    systeme:"Vous êtes le chef de cabinet de l'utilisateur. Vous rédigez en français, au vouvoiement, "+
+      "sans emoji, sans flatterie, sans fausse urgence. Phrases courtes, faits d'abord, chiffres quand ils existent."+
+      contexteUtilisateur(),
+    maxTokens:5000, effort:'medium', onPensee:reflexion,
+    invite:"Voici les messages en attente dans la boîte de réception.\n\n"+blocs.join('\n\n')+
+      "\n\nRédigez une synthèse structurée ainsi, sans autre commentaire :\n"+
+      "1. « Ce qui ne peut pas attendre » : la liste des messages appelant une action aujourd'hui, avec l'échéance quand elle est donnée.\n"+
+      "2. « À répondre cette semaine » : liste courte, une ligne par message, avec ce qu'on attend de l'utilisateur.\n"+
+      "3. « Pour information » : deux ou trois lignes maximum.\n"+
+      "4. « Ce que je propose de faire » : trois actions concrètes, dans l'ordre.\n"+
+      "Nommez les expéditeurs. N'inventez rien qui ne figure pas dans les messages.",
+    onDelta:(_,tout)=>{ zone.textContent=tout; zone.scrollIntoView({block:'nearest'}) }
+  });
+  zone.classList.remove('ecrit');
+  jauge(1,1); await Agent.fait('Synthèse prête','', 'violet');
+  S.stats.minutes+=12; majStats();
+  log('Synthèse rédigée.','ok');
+}
+
+async function missionBrouillons(){
+  let cibles=S.messages.filter(m=>!m.archive&&!m.brouillon&&
+    (m.reponseAttendue||['À répondre','Action requise'].includes(m.categorie)));
+  if(!cibles.length){
+    cibles=S.messages.filter(m=>!m.archive&&!m.categorie&&m.nonlu);
+    if(cibles.length) log("Aucun message classé « à répondre » : l'agent examine d'abord les non lus.",'');
+  }
+  if(!cibles.length){ toast("Aucun message n'attend de réponse."); return }
+  log('<b>Rédiger les réponses</b> — '+cibles.length+' messages.','ia');
+  let n=0;
+  for(const m of cibles){
+    verifieArret();
+    const ligne=$('.ligne[data-id="'+CSS.escape(m.id)+'"]');
+    await Agent.allerVers(ligne,'Ouverture du message');
+    await selectionner(m.id);
+    await pause(240);
+    if(!m.categorie){
+      try{
+        const d=await classer(m); m.categorie=d.categorie; m.resume=d.resume; m.reponseAttendue=!!d.reponse_attendue;
+        await F().etiqueter(m.id,d.categorie); majLigne(m);
+        if(!d.reponse_attendue&&['Newsletter','Indésirable','Pour information'].includes(d.categorie)){
+          await Agent.fait('Sans réponse attendue');
+          log('<b>'+ech(m.objet.slice(0,40))+'</b> n\'attend pas de réponse.','');
+          jauge(++n,cibles.length); continue;
+        }
+      }catch(e){ if(e&&e.arret) throw e }
+    }
+    try{ await redigerBrouillon(m); jauge(++n,cibles.length) }
+    catch(e){
+      if(e&&e.arret) throw e;
+      log('Brouillon impossible pour <b>'+ech(m.objet.slice(0,34))+'</b> : '+ech(e.message),'err');
+    }
+    await pause(300);
+  }
+  log('Brouillons prêts — relisez-les avant tout envoi.','ok');
+}
+
+async function redigerBrouillon(m){
+  const corps=(await chargerCorps(m)).slice(0,4000);
+  rendreLecture();
+  const carte=$('#carte-brouillon'); if(carte) carte.hidden=false;
+  const zone=$('#zone-brouillon'); if(zone) zone.value='';
+  Agent.eteindreProjecteur();
+  await Agent.allerVers(carte||$('#lecture-corps'),'Rédaction de la réponse');
+  let texte='';
+  await Moteur.appel({
+    systeme:"Vous rédigez, à la place de l'utilisateur, un brouillon de réponse à un courriel professionnel, en français. "+
+      "Règles : vouvoiement strict, aucun emoji, aucune formule creuse, aucune fausse urgence. "+
+      "Répondez point par point aux questions posées. N'inventez jamais un prix, une date, un chiffre ou un engagement : "+
+      "lorsqu'une information manque, écrivez-la entre crochets, par exemple [à confirmer : tarif pour 12 participants]. "+
+      "Terminez par la formule de clôture et la signature habituelles de l'utilisateur. "+
+      "N'écrivez que le corps du message, sans objet ni en-tête."+contexteUtilisateur(),
+    maxTokens:3000, effort:'medium', onPensee:reflexion,
+    invite:"Message à répondre :\nDe : "+m.expNom+" <"+m.expMail+">\nObjet : "+m.objet+"\n\n"+corps,
+    onDelta:(_,tout)=>{ texte=tout; const z=$('#zone-brouillon'); if(z){ z.value=tout; z.scrollTop=z.scrollHeight } }
+  });
+  m.brouillon=texte;
+  Agent.dire('Enregistrement du brouillon');
+  const did=await F().creerBrouillon(m,texte);
+  m.draftId=did; m.traite=true;
+  await Agent.fait('Brouillon enregistré', 'Déposé dans '+F().nom+' — rien n\'est envoyé', 'violet');
+  S.stats.brouillons++; S.stats.minutes+=8; majStats();
+  log('Brouillon enregistré pour <b>'+ech(m.expNom)+'</b> dans '+F().nom+'.','ok');
+  rendreLecture(); majLigne(m); majCompteurs();
+}
+
+function estDiffusion(m){
+  const local=(m.expMail||'').split('@')[0].toLowerCase();
+  if(/^(newsletter|lettre|news|invitations|diffusion|hebdo)/.test(local)) return true;
+  return /désabonn|desabonn|ne plus recevoir|se désinscrire|au sommaire|lettre hebdomadaire/i
+    .test((m.objet||'')+' '+(m.extrait||'')+' '+(m.corps||''));
+}
+async function missionNettoyage(){
+  const cibles=S.messages.filter(m=>!m.archive&&(['Newsletter','Indésirable'].includes(m.categorie)||(!m.categorie&&estDiffusion(m))));
+  if(!cibles.length){ toast("Aucune diffusion à ranger. Lancez « Trier la boîte » d'abord."); return }
+  const ok=await confirmer('Ranger '+cibles.length+' diffusion'+(cibles.length>1?'s':'')+' ?',
+    "L'agent va les marquer comme lues puis les archiver. Rien n'est supprimé : l'archivage se défait depuis votre messagerie.",
+    '<ul>'+cibles.slice(0,8).map(m=>'<li>'+ech(m.expNom)+' — '+ech(m.objet.slice(0,52))+'</li>').join('')+
+    (cibles.length>8?'<li>… et '+(cibles.length-8)+' autre'+(cibles.length>9?'s':'')+'</li>':'')+'</ul>');
+  if(!ok){ log('Rangement annulé.',''); return }
+  log('<b>Ranger les diffusions</b> — '+cibles.length+' messages.','ia');
+  let n=0;
+  for(const m of cibles){
+    verifieArret();
+    const ligne=$('.ligne[data-id="'+CSS.escape(m.id)+'"]');
+    await Agent.allerVers(ligne,'Rangement',340);
+    if(ligne) ligne.classList.add('scan');
+    try{
+      if(m.nonlu){ await F().marquerLu(m.id); m.nonlu=false; await Agent.fait('Marqué comme lu') }
+      await F().archiver(m.id); m.archive=true; m.traite=true;
+      await Agent.fait('Archivé', "Réversible depuis votre messagerie", 'violet');
+      S.stats.traites++; S.stats.minutes+=1;
+      log('Archivé — <b>'+ech(m.objet.slice(0,44))+'</b>','ok');
+      if(ligne){ ligne.classList.remove('scan'); ligne.classList.add('part') }
+      await pause(260);
+    }catch(e){
+      if(e&&e.arret) throw e;
+      if(ligne) ligne.classList.remove('scan');
+      log('Archivage refusé : '+ech(e.message),'err');
+    }
+    majStats(); jauge(++n,cibles.length); majCompteurs();
+  }
+  rendreListe();
+  log('Boîte allégée de '+n+' message'+(n>1?'s':'')+'.','ok');
+}
+
+const MISSIONS={profil:missionProfil, tri:missionTri, resume:missionResume, brouillons:missionBrouillons, nettoyage:missionNettoyage};
+const NOMS_MISSION={profil:'Portrait de vous', tri:'Tri de la boîte', resume:'Résumé du jour', brouillons:'Rédaction des réponses', nettoyage:'Rangement'};
+
+async function lancerMission(cle){
+  if(S.actif) return;
+  if(!moteurDispo() && cle!=='nettoyage'){ ouvrirReglages("Aucun accès au moteur : saisissez une clé Anthropic pour que l'agent puisse réfléchir."); return }
+  S.actif=true; S.stop=false;
+  // En habillage Gmail, le volet de lecture recouvre la liste : on le referme
+  // pour que l'on voie l'agent passer de message en message.
+  if(S.skin==='gmail' && ['tri','nettoyage','resume','profil'].includes(cle)) fermerLecture();
+  Agent.montrer(); etatAgent(NOMS_MISSION[cle]+'…', true); jauge(0,1);
+  const t0=Date.now();
+  try{
+    await MISSIONS[cle]();
+    etatAgent('terminé en '+Math.round((Date.now()-t0)/1000)+' s', false);
+  }catch(e){
+    if(e&&e.arret){ log('Agent arrêté par vos soins.',''); etatAgent('arrêté', false) }
+    else { log('Mission interrompue : '+ech(e.message||e),'err'); etatAgent('interrompue', false) }
+  }
+  S.actif=false; Agent.taire(); Agent.eteindreProjecteur();
+  $$('.ligne.scan').forEach(e=>e.classList.remove('scan'));
+  rendreListe(); majCompteurs();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   7 · AFFICHAGE DE LA MESSAGERIE
+   ══════════════════════════════════════════════════════════════════════════ */
+const IC = {
+  reception:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 13h5l2 3h4l2-3h5"/><path d="M4 5h16l1 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6l1-8z"/></svg>',
+  nonlus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>',
+  repondre:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/></svg>',
+  brouillons:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="m14 6 4 4"/></svg>',
+  archive:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>',
+  ia:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg>',
+  etoile:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m12 4 2.4 5 5.6.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.6-.8L12 4z"/></svg>'
+};
+const DOSSIERS=[
+  {cle:'reception', nom:'Boîte de réception'},
+  {cle:'nonlus',    nom:'Non lus'},
+  {cle:'repondre',  nom:'À répondre'},
+  {cle:'brouillons',nom:"Brouillons de l'agent"},
+  {cle:'archive',   nom:'Archivés'}
+];
+function rendreDossiers(){
+  $('#dossiers').innerHTML=DOSSIERS.map(d=>
+    '<button class="dossier'+(S.dossier===d.cle?' on':'')+'" data-dossier="'+d.cle+'">'+IC[d.cle]+
+    '<span class="n">'+d.nom+'</span><span class="c" id="c-'+d.cle+'"></span></button>').join('');
+}
+function filtrer(){
+  const q=S.recherche.trim().toLowerCase();
+  let l=S.messages.slice();
+  if(S.dossier==='reception') l=l.filter(m=>!m.archive);
+  if(S.dossier==='nonlus') l=l.filter(m=>!m.archive&&m.nonlu);
+  if(S.dossier==='repondre') l=l.filter(m=>!m.archive&&(m.reponseAttendue||['À répondre','Action requise'].includes(m.categorie)));
+  if(S.dossier==='brouillons') l=l.filter(m=>m.brouillon);
+  if(S.dossier==='archive') l=l.filter(m=>m.archive);
+  if(q) l=l.filter(m=>(m.expNom+' '+m.expMail+' '+m.objet+' '+(m.extrait||'')).toLowerCase().includes(q));
+  return l.sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function etiquettes(m){
+  return (m.categorie?'<span class="etiq-l '+(CATEGORIES[m.categorie]||{}).classe+'">'+ech(m.categorie)+'</span>':'')+
+         (m.brouillon?'<span class="etiq-l verte">Brouillon prêt</span>':'')+
+         (m.archive?'<span class="etiq-l">Archivé</span>':'');
+}
+function rendreListe(){
+  const l=filtrer(), c=$('#liste');
+  $('#titre-dossier').textContent=(DOSSIERS.find(d=>d.cle===S.dossier)||{}).nom;
+  $('#cpt-liste').textContent=l.length?('1–'+l.length+' sur '+l.length):'';
+  if(!l.length){ c.innerHTML='<div style="padding:48px 20px;text-align:center;color:var(--encre-3)">Aucun message ici.</div>'; return }
+  c.innerHTML=l.map(m=>{
+    const t=etiquettes(m);
+    return '<button class="ligne'+(m.nonlu?' nonlu':'')+(S.selection===m.id?' on':'')+'" data-id="'+ech(m.id)+'">'+
+      '<span class="voile-scan"></span>'+
+      '<span class="etoile">'+IC.etoile+'</span>'+
+      '<span class="haut"><span class="exp">'+ech(m.expNom||m.expMail)+'</span>'+
+        '<span class="date">'+dateCourte(m.date)+'</span></span>'+
+      '<span class="centre"><span class="obj">'+ech(m.objet)+'</span>'+
+        '<span class="ext">'+ech((m.resume||m.extrait||'').slice(0,120))+'</span></span>'+
+      (t?'<span class="tags-l">'+t+'</span>':'')+
+    '</button>';
+  }).join('');
+}
+function majLigne(m){
+  const l=$('.ligne[data-id="'+CSS.escape(m.id)+'"]');
+  if(!l) return;
+  l.classList.toggle('nonlu',!!m.nonlu);
+  const ext=l.querySelector('.ext'); if(ext&&m.resume) ext.textContent=m.resume.slice(0,120);
+  let t=l.querySelector('.tags-l'); const html=etiquettes(m);
+  if(!t&&html){ t=document.createElement('span'); t.className='tags-l'; l.insertBefore(t,l.querySelector('.centre')) }
+  if(t) t.innerHTML=html;
+}
+function majCompteurs(){
+  const a=S.messages, n={
+    reception:a.filter(m=>!m.archive).length,
+    nonlus:a.filter(m=>!m.archive&&m.nonlu).length,
+    repondre:a.filter(m=>!m.archive&&(m.reponseAttendue||['À répondre','Action requise'].includes(m.categorie))).length,
+    brouillons:a.filter(m=>m.brouillon).length,
+    archive:a.filter(m=>m.archive).length};
+  DOSSIERS.forEach(d=>{ const e=$('#c-'+d.cle); if(e) e.textContent=n[d.cle]||'' });
+}
+async function chargerCorps(m){ if(m.corps!=null) return m.corps; m.corps=await F().corps(m.id); return m.corps }
+function msgCourant(){ return S.messages.find(m=>m.id===S.selection) }
+
+function rendreLecture(){
+  const m=msgCourant(), pan=$('#lecture'), corps=$('#lecture-corps');
+  if(!m){
+    if(S.skin==='gmail'){ pan.hidden=true }
+    else { pan.hidden=false; corps.innerHTML='<div class="vide-lecture"><div>'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="m3 7 9 6 9-6"/></svg>'+
+      '<p>Sélectionnez un message, ou lancez une mission depuis la console de l\'agent.</p></div></div>' }
+    return;
+  }
+  pan.hidden=false;
+  const lien=F().lienExterne&&F().lienExterne(m);
+  const le=$('#lien-externe'); if(le){ le.hidden=!lien; if(lien) le.href=lien }
+  corps.innerHTML=
+    '<div class="objet">'+ech(m.objet)+' '+(m.categorie?'<span class="etiq-l '+(CATEGORIES[m.categorie]||{}).classe+'">'+ech(m.categorie)+'</span>':'')+'</div>'+
+    '<div class="entete-msg">'+
+      '<div class="av" style="background:'+couleur(m.expMail)+'">'+ech(initiales(m.expNom||m.expMail))+'</div>'+
+      '<div><div class="nom">'+ech(m.expNom||m.expMail)+'</div><div class="adr">'+ech(m.expMail)+'</div></div>'+
+      '<div class="quand">'+new Date(m.date).toLocaleString('fr-FR',{dateStyle:'long',timeStyle:'short'})+'</div>'+
+    '</div>'+
+    '<div class="carte-ia" id="carte-resume"'+(m.resumeLong?'':' hidden')+'>'+
+      '<div class="ct">'+IC.ia+'Lecture de l\'agent</div>'+
+      '<div class="contenu" id="zone-resume">'+ech(m.resumeLong||'')+'</div></div>'+
+    '<div class="texte-msg" id="zone-corps">'+(m.corps!=null?ech(m.corps):'Chargement du message…')+'</div>'+
+    '<div class="carte-ia" id="carte-brouillon"'+(m.brouillon?'':' hidden')+'>'+
+      '<div class="ct">'+IC.ia+'Brouillon de réponse'+
+        (m.draftId?' · enregistré dans '+ech(F().nom):'')+'</div>'+
+      '<textarea class="zone-brouillon" id="zone-brouillon" spellcheck="true">'+ech(m.brouillon||'')+'</textarea>'+
+      '<div class="rangee-b">'+
+        '<button class="bouton-rep" data-act="enregistrer-brouillon">Enregistrer dans '+ech(F().nom)+'</button>'+
+        '<button class="bouton-rep" data-act="copier-brouillon">Copier</button>'+
+        (lien?'<a class="bouton-rep" href="'+ech(lien)+'" target="_blank" rel="noopener">Relire et envoyer</a>':'')+
+        '<span class="note-b">L\'agent n\'envoie jamais : vous relisez, vous envoyez.</span>'+
+      '</div></div>'+
+    '<div class="actions-rep">'+
+      '<button class="bouton-rep" data-act="brouillon">'+IC.ia+'Demander une réponse à l\'agent</button>'+
+      '<button class="bouton-rep" data-act="resumer">'+IC.ia+'Résumer</button>'+
+    '</div>';
+  if(m.corps==null) chargerCorps(m).then(t=>{ const z=$('#zone-corps'); if(z&&S.selection===m.id) z.textContent=t })
+    .catch(e=>{ const z=$('#zone-corps'); if(z) z.textContent='Lecture impossible : '+e.message });
+}
+async function selectionner(id){
+  S.selection=id;
+  $$('.ligne').forEach(l=>l.classList.toggle('on',l.dataset.id===id));
+  rendreLecture();
+  const m=msgCourant(); if(m&&m.corps==null){ try{ await chargerCorps(m); rendreLecture() }catch(e){} }
+}
+function fermerLecture(){ S.selection=null; $$('.ligne').forEach(l=>l.classList.remove('on')); rendreLecture() }
+function ouvrirSynthese(){
+  S.selection=null; $$('.ligne').forEach(l=>l.classList.remove('on'));
+  const pan=$('#lecture'); pan.hidden=false;
+  $('#lien-externe').hidden=true;
+  $('#lecture-corps').innerHTML=
+    '<div class="objet">Votre boîte, en une page</div>'+
+    '<div class="carte-ia"><div class="ct">'+IC.ia+'Synthèse rédigée par l\'agent</div>'+
+    '<div class="contenu" id="zone-synthese"></div></div>'+
+    '<p class="note-b">Cette synthèse n\'est pas enregistrée : relancez la mission quand vous voulez.</p>';
+}
+
+function ouvrirProfil(enCours){
+  S.selection=null; $$('.ligne').forEach(l=>l.classList.remove('on'));
+  const pan=$('#lecture'); pan.hidden=false; $('#lien-externe').hidden=true;
+  const p=S.profil;
+  const ligne=(t,v)=>v?'<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--bord-2)">'+
+    '<span style="width:150px;flex:none;color:var(--encre-3);font-size:12.5px">'+t+'</span>'+
+    '<span style="flex:1">'+ech(Array.isArray(v)?v.join(', '):v)+'</span></div>':'';
+  $('#lecture-corps').innerHTML=
+    '<div class="objet">Ce que l\'agent a compris de vous</div>'+
+    '<div class="carte-ia"><div class="ct">'+IC.ia+'Fiche de contexte · établie à partir de vos propres messages</div>'+
+      (enCours||!p ? '<div class="contenu" id="zone-profil"></div>' :
+        '<div class="contenu" id="zone-profil" style="white-space:normal">'+
+          ligne('Identité',p.identite)+ligne('Activité',p.activite)+ligne('Fonction',p.role)+
+          ligne('Ton',p.ton)+ligne('Longueur',p.longueur)+
+          ligne('Ouvertures',p.formules&&p.formules.ouverture)+
+          ligne('Clôtures',p.formules&&p.formules.cloture)+
+          ligne('Signature',p.signature)+ligne('Interlocuteurs',p.interlocuteurs)+ligne('Sujets',p.sujets)+
+        '</div>')+
+    '</div>'+
+    (p&&!enCours ?
+      '<div class="carte-ia"><div class="ct">'+IC.ia+'Consignes que l\'agent suit pour écrire à votre place</div>'+
+        '<textarea class="zone-brouillon" id="zone-consignes" style="min-height:120px">'+ech(p.consignes||'')+'</textarea>'+
+        '<div class="rangee-b">'+
+          '<button class="bouton-rep" data-act="profil-enregistrer">Enregistrer</button>'+
+          '<button class="bouton-rep" data-act="profil-relancer">Relancer l\'analyse</button>'+
+          '<span class="note-b">Cette fiche reste dans votre navigateur. Elle n\'est envoyée nulle part ailleurs qu\'au moteur, avec chaque demande.</span>'+
+        '</div></div>' : '');
+}
+
+async function actionMessage(act){
+  if(act==='profil-enregistrer'){
+    if(S.profil){ S.profil.consignes=$('#zone-consignes').value.trim(); sauverProfil();
+      toast('Consignes enregistrées.'); log('Consignes de style mises à jour.','ok') }
+    return;
+  }
+  if(act==='profil-relancer') return lancerMission('profil');
+  const m=msgCourant(); if(!m) return;
+  try{
+    if(act==='lu'){ await F().marquerLu(m.id); m.nonlu=false; log('Marqué comme lu — <b>'+ech(m.objet.slice(0,40))+'</b>','ok') }
+    if(act==='archiver'){ await F().archiver(m.id); m.archive=true; log('Archivé — <b>'+ech(m.objet.slice(0,40))+'</b>','ok'); fermerLecture() }
+    if(act==='resumer'){
+      if(!moteurDispo()){ ouvrirReglages("Aucun accès au moteur : saisissez une clé Anthropic."); return }
+      Agent.montrer(); etatAgent('lecture du message…',true);
+      const carte=$('#carte-resume'); if(carte) carte.hidden=false;
+      const zone=$('#zone-resume'); if(zone){ zone.textContent=''; zone.classList.add('ecrit') }
+      await Agent.allerVers(carte||$('#lecture-corps'),'Lecture');
+      const corps=(await chargerCorps(m)).slice(0,6000);
+      const t=await Moteur.appel({
+        systeme:"Vous résumez un courriel professionnel pour son destinataire. Français, vouvoiement, aucun emoji, "+
+          "aucune flatterie. Soyez factuel et bref."+contexteUtilisateur(),
+        maxTokens:1600, effort:'low', onPensee:reflexion,
+        invite:"De : "+m.expNom+" <"+m.expMail+">\nObjet : "+m.objet+"\n\n"+corps+
+          "\n\nDonnez : une phrase de synthèse, puis « Ce qu'on attend de vous » en une à trois puces, "+
+          "puis « Échéance » si une date est mentionnée. Rien d'autre.",
+        onDelta:(_,tout)=>{ const z=$('#zone-resume'); if(z) z.textContent=tout }
+      });
+      m.resumeLong=t; const z=$('#zone-resume'); if(z) z.classList.remove('ecrit');
+      await Agent.fait('Résumé prêt','', 'violet');
+      S.stats.minutes+=3; majStats(); log('Résumé rédigé.','ok');
+      etatAgent('en veille',false); Agent.eteindreProjecteur();
+    }
+    if(act==='brouillon'){
+      if(!moteurDispo()){ ouvrirReglages("Aucun accès au moteur : saisissez une clé Anthropic."); return }
+      S.actif=true; S.stop=false; Agent.montrer(); etatAgent('rédaction…',true);
+      try{ await redigerBrouillon(m); etatAgent('brouillon prêt',false) }
+      finally{ S.actif=false; Agent.eteindreProjecteur(); Agent.taire() }
+    }
+    if(act==='enregistrer-brouillon'){
+      const t=$('#zone-brouillon').value.trim();
+      if(!t){ toast('Le brouillon est vide.'); return }
+      m.brouillon=t; m.draftId=await F().creerBrouillon(m,t);
+      log('Brouillon enregistré dans votre messagerie.','ok'); toast('Brouillon enregistré.');
+    }
+    if(act==='copier-brouillon'){ await navigator.clipboard.writeText($('#zone-brouillon').value); toast('Texte copié.') }
+    if(act==='profil-enregistrer'){
+      if(S.profil){ S.profil.consignes=$('#zone-consignes').value.trim(); sauverProfil();
+        toast('Consignes enregistrées.'); log('Consignes de style mises à jour.','ok') }
+      return;
+    }
+    if(act==='profil-relancer'){ lancerMission('profil'); return }
+  }catch(e){ log('Action impossible : '+ech(e.message),'err'); toast(e.message) }
+  majCompteurs();
+  if(msgCourant()) { majLigne(msgCourant()); if(act!=='resumer') rendreLecture() } else rendreListe();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   8 · MODALES
+   ══════════════════════════════════════════════════════════════════════════ */
+function fermerModale(){ $('#voile').classList.remove('on'); $('#modale').innerHTML=''; $('#modale').onclick=null }
+function ouvrirModale(html){ $('#modale').innerHTML=html; $('#voile').classList.add('on') }
+function confirmer(titre,texte,detail){
+  return new Promise(ok=>{
+    ouvrirModale('<h3>'+titre+'</h3><div class="c"><p>'+texte+'</p>'+(detail||'')+'</div>'+
+      '<div class="p"><button class="btn" data-m="non">Annuler</button>'+
+      '<button class="btn p" data-m="oui">Confirmer</button></div>');
+    $('#modale').onclick=e=>{ const b=e.target.closest('[data-m]'); if(!b) return; fermerModale(); ok(b.dataset.m==='oui') };
+  });
+}
+function ouvrirReglages(message){
+  const champModele=(m)=>'<input type="text" id="r-modele-'+m+'" list="l-'+m+'" value="'+ech(S.modeles[m]||'')+'">'+
+    '<datalist id="l-'+m+'">'+MOTEURS[m].modeles.map(x=>'<option value="'+x+'">').join('')+'</datalist>';
+  ouvrirModale('<h3>Réglages</h3><div class="c">'+
+    (message?'<p style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;padding:10px 12px;margin-bottom:16px">'+ech(message)+'</p>':'')+
+    '<label><span class="l">Moteur de l\'agent</span><select id="r-moteur">'+
+      Object.keys(MOTEURS).map(m=>'<option value="'+m+'"'+(S.moteur===m?' selected':'')+'>'+MOTEURS[m].nom+'</option>').join('')+
+      '</select><span class="aide">Le moteur choisi sert à tout : analyse, résumés, brouillons.</span></label>'+
+    '<label><span class="l">Clé API Anthropic (facultatif)</span>'+
+      '<input type="password" id="r-cle-claude" value="'+ech(S.cles.claude)+'" placeholder="sk-ant-..." autocomplete="off">'+
+      '<span class="aide">Laissez vide pour passer par l\'accès France IA.</span></label>'+
+    '<label><span class="l">Clé API OpenAI (facultatif)</span>'+
+      '<input type="password" id="r-cle-chatgpt" value="'+ech(S.cles.chatgpt)+'" placeholder="sk-..." autocomplete="off"></label>'+
+    '<label><span class="l">Modèle Claude</span>'+champModele('claude')+'</label>'+
+    '<label><span class="l">Modèle ChatGPT</span>'+champModele('chatgpt')+'</label>'+
+    '<hr style="border:0;border-top:1px solid #EEF0F3;margin:18px 0">'+
+    '<label><span class="l">Relais France IA (accès sans clé)</span>'+
+      '<input type="text" id="r-relais" value="'+ech(REGLAGES.relaisUrl)+'" placeholder="https://…workers.dev" spellcheck="false">'+
+      '<span class="aide">Laissez vide pour que chacun utilise sa propre clé.</span></label>'+
+    '<label><span class="l">Code d\'accès du relais</span>'+
+      '<input type="text" id="r-code" value="'+ech(REGLAGES.relaisCode)+'" placeholder="FIA-…" spellcheck="false"></label>'+
+    '<label><span class="l">Identifiant client Google</span>'+
+      '<input type="text" id="r-google" value="'+ech(REGLAGES.googleClientId)+'" placeholder="...apps.googleusercontent.com" spellcheck="false"></label>'+
+    '<label><span class="l">Identifiant d\'application Microsoft</span>'+
+      '<input type="text" id="r-ms" value="'+ech(REGLAGES.microsoftClientId)+'" placeholder="00000000-0000-0000-0000-000000000000" spellcheck="false">'+
+      '<span class="aide">Adresse de redirection à déclarer des deux côtés : <code>'+ech(location.origin+location.pathname)+'</code></span></label>'+
+    '</div><div class="p"><button class="btn d" data-r="effacer">Effacer mes données</button>'+
+    '<button class="btn" data-r="fermer">Fermer</button>'+
+    '<button class="btn p" data-r="enregistrer">Enregistrer</button></div>');
+  $('#modale').onclick=async e=>{
+    const b=e.target.closest('[data-r]'); if(!b) return;
+    if(b.dataset.r==='fermer') return fermerModale();
+    if(b.dataset.r==='effacer'){
+      ['fia-agent-mail-cles','fia-agent-mail-cle','fia-agent-mail-config'].forEach(k=>localStorage.removeItem(k));
+      Object.keys(localStorage).filter(k=>k.startsWith('fia-agent-mail-profil')).forEach(k=>localStorage.removeItem(k));
+      S.cles={claude:'',chatgpt:''}; S.cleValide=false; S.profil=null;
+      majEtatMoteur(); fermerModale(); toast('Données locales effacées.'); return;
+    }
+    S.moteur=$('#r-moteur').value;
+    S.cles={claude:$('#r-cle-claude').value.trim(), chatgpt:$('#r-cle-chatgpt').value.trim()};
+    S.modeles={claude:$('#r-modele-claude').value.trim()||MOTEURS.claude.defaut,
+               chatgpt:$('#r-modele-chatgpt').value.trim()||MOTEURS.chatgpt.defaut};
+    ecrireJSON('fia-agent-mail-cles',S.cles);
+    REGLAGES.googleClientId=$('#r-google').value.trim();
+    REGLAGES.microsoftClientId=$('#r-ms').value.trim();
+    REGLAGES.relaisUrl=$('#r-relais').value.trim();
+    REGLAGES.relaisCode=$('#r-code').value.trim();
+    REGLAGES.moteur=S.moteur; REGLAGES.modeles=S.modeles;
+    ecrireJSON('fia-agent-mail-config',{googleClientId:REGLAGES.googleClientId,microsoftClientId:REGLAGES.microsoftClientId,
+      relaisUrl:REGLAGES.relaisUrl,relaisCode:REGLAGES.relaisCode,moteur:S.moteur,modeles:S.modeles});
+    S.cleValide=false; majEtatMoteur(); fermerModale(); toast('Réglages enregistrés.');
+    if(cleCourante()) verifierCle(S.moteur, cleCourante());
+    else if(REGLAGES.relaisUrl) sonderRelais();
+  };
+}
+function ouvrirGuide(){
+  ouvrirModale('<h3>Comment ça marche</h3><div class="c">'+
+    '<p><b>1 · L\'agent apprend d\'abord qui vous êtes.</b> À la première connexion, il lit vos derniers '+
+    'messages envoyés et reçus pour comprendre votre métier, vos interlocuteurs et votre façon d\'écrire. '+
+    'La fiche obtenue reste dans votre navigateur ; vous pouvez la corriger, et elle guide ensuite chaque brouillon.</p>'+
+    '<p style="margin-top:12px"><b>2 · Cinq missions.</b> Me connaître · Trier la boîte (chaque message lu, classé, '+
+    'étiqueté, marqué lu s\'il n\'appelle rien) · Résumé du jour · Rédiger les réponses · Ranger les diffusions.</p>'+
+    '<p style="margin-top:12px"><b>3 · Ce que l\'agent s\'interdit.</b></p>'+
+    '<ul><li>Aucun envoi : il ne produit que des brouillons, déposés dans votre messagerie.</li>'+
+    '<li>Aucune suppression : l\'archivage se défait.</li>'+
+    '<li>L\'archivage en série demande confirmation, avec la liste.</li>'+
+    '<li>Échap arrête l\'agent immédiatement.</li>'+
+    '<li>Il n\'invente pas de chiffres : ce qui manque apparaît entre crochets.</li></ul>'+
+    '<p style="margin-top:12px"><b>4 · Où passent vos données.</b> Votre navigateur parle directement à votre messagerie. '+
+    'Pour réfléchir, l\'agent s\'appuie sur '+ech(MOTEURS[S.moteur].nom)+' : le contenu des messages traités lui est transmis, '+
+    'et n\'est pas utilisé pour entraîner des modèles. Le jeton d\'accès à votre boîte disparaît à la fermeture de l\'onglet ; '+
+    'rien n\'est conservé ailleurs que dans ce navigateur.</p>'+
+    '<p style="margin-top:12px"><b>5 · Une autre messagerie ?</b> Gmail et Outlook exposent une interface officielle '+
+    "qu'un navigateur peut appeler : la connexion se fait en un clic, sans mot de passe. iCloud, Free, OVH ou un serveur "+
+    "d'entreprise n'offrent que l'IMAP, qu'un navigateur ne sait pas parler — il faudrait un service intermédiaire et un "+
+    'mot de passe dédié. Ces messageries ne sont donc pas branchées ici.</p>'+
+    '<p style="margin-top:12px">Sur un poste partagé, terminez par <b>Réglages → Effacer mes données</b>.</p>'+
+    '</div><div class="p"><button class="btn p" data-g="1">J\'ai compris</button></div>');
+  $('#modale').onclick=e=>{ if(e.target.closest('[data-g]')) fermerModale() };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   9 · CONNEXION ET DÉMARRAGE
+   ══════════════════════════════════════════════════════════════════════════ */
+function majEtatMoteur(etat){
+  const past=$('#pastille-moteur'); if(!past) return;
+  const nom=MOTEURS[S.moteur].nom;
+  const pose=(cl,txt)=>{ past.className='pastille '+cl; past.textContent='Moteur : '+txt };
+  if(etat==='verif') pose('bleue','vérification…');
+  else if(cleCourante()&&S.cleValide) pose('verte',nom+' · votre clé');
+  else if(cleCourante()) pose('bleue',nom+' · clé enregistrée');
+  else if(REGLAGES.relaisUrl&&etat==='relais-ok') pose('verte',nom+' · accès France IA');
+  else if(REGLAGES.relaisUrl&&etat==='relais-ko') pose('ambre',nom+' · accès indisponible');
+  else if(REGLAGES.relaisUrl) pose('bleue',nom+' · accès France IA');
+  else pose('ambre','à configurer');
+  etatAccueil(etat);
+}
+/* Message unique et honnête sous les deux boutons : ce qui manque, s'il manque
+   quelque chose, et où le régler. */
+function etatAccueil(etat){
+  const e=$('#etat-cle'); if(!e) return;
+  const manque=[];
+  if(!REGLAGES.googleClientId) manque.push('Gmail');
+  if(!REGLAGES.microsoftClientId) manque.push('Outlook');
+  if(manque.length===2){
+    e.style.color='#B45309';
+    e.textContent="Aucune messagerie n'est encore déclarée dans cette copie : renseignez les identifiants Google et Microsoft dans les réglages.";
+    return;
+  }
+  if(manque.length===1){
+    e.style.color='#B45309';
+    e.textContent='La connexion '+manque[0]+" n'est pas encore configurée dans cette copie.";
+    return;
+  }
+  if(!moteurDispo()){
+    e.style.color='#B45309';
+    e.textContent="Le moteur de l'agent n'est pas configuré : choisissez Claude ou ChatGPT dans les réglages.";
+    return;
+  }
+  if(etat==='relais-ko'){ e.style.color='#B45309'; e.textContent=$('#etat-cle').dataset.err||"L'accès France IA ne répond pas ; utilisez votre propre clé dans les réglages."; return }
+  e.style.color='#6B7280'; e.textContent='';
+}
+function sonderRelais(){
+  majEtatMoteur('verif');
+  return Moteur.verifierRelais().then(()=>majEtatMoteur('relais-ok'))
+    .catch(err=>{ const e=$('#etat-cle'); if(e) e.dataset.err=err.message.slice(0,180); majEtatMoteur('relais-ko') });
+}
+async function verifierCle(moteur, cle){
+  try{
+    await Moteur.verifierCle(moteur, cle);
+    S.cleValide=true; S.cles[moteur]=cle; ecrireJSON('fia-agent-mail-cles',S.cles);
+    majEtatMoteur(); toast('Clé '+MOTEURS[moteur].nom+' valide.');
+    return true;
+  }catch(err){
+    S.cleValide=false; majEtatMoteur();
+    const e=$('#etat-cle'); if(e){ e.style.color='#B91C1C'; e.textContent=err.message.slice(0,160) }
+    return false;
+  }
+}
+/* ── Session ─────────────────────────────────────────────────────────────
+   On retient qui s'est connecté (nom, adresse, photo), jamais le jeton.
+   Au retour, un seul bouton : Continuer. */
+function lireSession(){ return lireJSON('fia-agent-mail-session') }
+function ecrireSession(){
+  ecrireJSON('fia-agent-mail-session',{fournisseur:S.fournisseur, email:S.compte.email,
+    nom:S.compte.nom, photo:S.compte.photo||''});
+}
+function oublierSession(){ localStorage.removeItem('fia-agent-mail-session') }
+function afficherReprise(){
+  const ss=lireSession(), rep=$('#reprise'), cx=$('#connexions'), autre=$('#btn-autre-compte');
+  if(!ss||!FOURNISSEURS[ss.fournisseur]){ rep.hidden=true; autre.hidden=true; cx.hidden=false; return }
+  rep.hidden=false; autre.hidden=false; cx.hidden=true;
+  $('#reprise-nom').textContent=ss.nom||ss.email;
+  $('#reprise-mail').textContent=ss.email+' · '+FOURNISSEURS[ss.fournisseur].nom;
+  const ph=$('#reprise-photo');
+  if(ss.photo){ ph.style.backgroundImage='url('+ss.photo+')'; ph.textContent='' }
+  else { ph.style.backgroundImage=''; ph.textContent=initiales(ss.nom||ss.email) }
+}
+async function reprendreSession(){
+  const ss=lireSession(); if(!ss) return;
+  const e=$('#etat-cle'); if(e){ e.style.color='#6B7280'; e.textContent='Reconnexion à '+FOURNISSEURS[ss.fournisseur].nom+'…' }
+  S.fournisseur=ss.fournisseur;
+  appliquerSkin(ss.fournisseur==='google'?'gmail':'outlook');
+  try{
+    const ok=await FOURNISSEURS[ss.fournisseur].reprendre(ss.email);
+    if(ok){ await apresConnexion(); return }
+    await FOURNISSEURS[ss.fournisseur].connecter();
+    await apresConnexion();
+  }catch(err){
+    S.fournisseur=null;
+    if(e){ e.style.color='#B91C1C'; e.textContent=err.message.slice(0,200) }
+  }
+}
+function changerDeCompte(){
+  oublierSession();
+  try{ Google.deconnecter(); Microsoft.deconnecter() }catch(e){}
+  afficherReprise(); preparerBoutons();
+}
+/* Le bouton Google est rendu par Google ; celui de Microsoft suit leur charte. */
+async function preparerBoutons(){
+  const e=$('#etat-cle');
+  const rien=!REGLAGES.googleClientId && !REGLAGES.microsoftClientId;
+  const vide=$('#aucune-connexion');
+  if(vide){
+    vide.hidden=!rien;
+    const o=$('#origine-ici'), rd=$('#redirection-ici');
+    if(o) o.textContent=location.origin;
+    if(rd) rd.textContent=location.origin+location.pathname;
+  }
+  if(!REGLAGES.googleClientId){ $('#btn-google').innerHTML=''; }
+  else {
+    try{
+      await Google.afficherBouton($('#btn-google'), async (identite)=>{
+        if(e){ e.style.color='#6B7280'; e.textContent='Bonjour '+(identite.nom||identite.email)+" — autorisation de votre boîte…" }
+        S.fournisseur='google'; appliquerSkin('gmail');
+        try{ await Google.connecter(); await apresConnexion() }
+        catch(err){ S.fournisseur=null; if(e){ e.style.color='#B91C1C'; e.textContent=err.message.slice(0,200) } }
+      });
+      if(!lireSession()) Google.proposerUnClic();
+    }catch(err){ if(e) e.textContent=err.message.slice(0,160) }
+  }
+  $('#btn-microsoft').hidden=!REGLAGES.microsoftClientId;
+  etatAccueil();
+}
+
+async function connecter(cle){
+  const e=$('#etat-cle');
+  try{
+    S.fournisseur=cle;
+    appliquerSkin(cle==='google'?'gmail':'outlook');
+    await FOURNISSEURS[cle].connecter();
+    await apresConnexion();
+  }catch(err){
+    S.fournisseur=null;
+    if(e){ e.textContent=err.message.slice(0,200); e.style.color='#B91C1C' }
+    toast(err.message);
+  }
+}
+async function apresConnexion(){
+  S.compte=await F().profil();
+  ecrireSession();
+  $('#puce-compte').textContent=S.compte.nom||S.compte.email;
+  const av=$('#avatar-compte');
+  if(S.compte.photo){ av.textContent=''; av.style.background='url('+S.compte.photo+') center/cover no-repeat' }
+  else { av.textContent=initiales(S.compte.nom||S.compte.email); av.style.background=couleur(S.compte.email) }
+  $('#lancement').hidden=true;
+  $('#client').classList.add('on');
+  $('#dock').classList.add('on');
+  rendreDossiers();
+  log('Messagerie connectée — <b>'+ech(S.compte.email)+'</b> · '+F().nom,'ok');
+  chargerProfil();
+  await charger();
+  if(!moteurDispo()){
+    log("Aucun accès au moteur : saisissez une clé Anthropic via la roue dentée, en haut à droite.",'');
+    toast("Ajoutez une clé Anthropic (roue dentée) pour activer l'agent.");
+  } else {
+    log('Moteur : '+moteurNom()+' · '+modeleCourant(),'');
+    if(!S.profil){
+      // Première connexion : l'agent apprend qui vous êtes avant de toucher à quoi que ce soit.
+      log("Première connexion : l'agent lit vos messages pour comprendre votre voix et votre contexte.",'ia');
+      lancerMission('profil');
+    } else {
+      log('Fiche de contexte retrouvée — l\'agent connaît déjà votre voix.','ok');
+    }
+  }
+}
+async function charger(){
+  etatAgent('lecture de la boîte…',false);
+  try{
+    S.messages=await F().lister(25);
+    rendreListe(); majCompteurs(); rendreLecture();
+    etatAgent('en veille',false);
+    log(S.messages.length+' messages chargés, dont '+S.messages.filter(m=>m.nonlu).length+' non lus.','');
+  }catch(e){
+    etatAgent('erreur de chargement',false);
+    log('Chargement impossible : '+ech(e.message),'err'); toast(e.message);
+  }
+}
+async function deconnecter(){
+  const ok=await confirmer('Quitter la session ?',
+    "L'autorisation de messagerie sera révoquée pour cette session et l'écran vidé. "+
+    "Votre clé Claude reste enregistrée dans ce navigateur ; « Effacer mes données » la retire aussi.");
+  if(!ok) return;
+  try{ await F().deconnecter() }catch(e){}
+  oublierSession();
+  S.fournisseur=null; S.messages=[]; S.selection=null; S.stats={traites:0,brouillons:0,minutes:0};
+  majStats(); $('#journal').innerHTML='';
+  $('#client').classList.remove('on'); $('#lancement').hidden=false;
+  $('#dock').classList.remove('on','ouvert'); Agent.cacher();
+  afficherReprise(); preparerBoutons();
+}
+
+function brancher(){
+  Agent.init();
+  $('#btn-microsoft').addEventListener('click',()=>connecter('microsoft'));
+  $('#btn-activer').addEventListener('click',()=>{
+    const g=$('#cid-google').value.trim(), m=$('#cid-ms').value.trim();
+    if(!g&&!m){ toast('Collez au moins un identifiant.'); return }
+    if(g) REGLAGES.googleClientId=g;
+    if(m) REGLAGES.microsoftClientId=m;
+    ecrireJSON('fia-agent-mail-config',Object.assign({},CONFIG_LOCALE,{
+      googleClientId:REGLAGES.googleClientId, microsoftClientId:REGLAGES.microsoftClientId,
+      relaisUrl:REGLAGES.relaisUrl, relaisCode:REGLAGES.relaisCode,
+      moteur:S.moteur, modeles:S.modeles}));
+    preparerBoutons();
+    toast('Connexion activée. Le bouton Google apparaît ci-dessus.');
+  });
+  $('#btn-reprendre').addEventListener('click',reprendreSession);
+  $('#btn-autre-compte').addEventListener('click',changerDeCompte);
+  $('#btn-aide').addEventListener('click',ouvrirGuide);
+  $('#btn-reglages-l').addEventListener('click',()=>ouvrirReglages());
+  $('#btn-reglages').addEventListener('click',()=>ouvrirReglages());
+  $('#lien-guide').addEventListener('click',e=>{ e.preventDefault(); ouvrirGuide() });
+  $('#lien-quitter').addEventListener('click',e=>{ e.preventDefault(); deconnecter() });
+  $('#voile').addEventListener('click',e=>{ if(e.target.id==='voile') fermerModale() });
+  $$('#missions button').forEach(b=>b.addEventListener('click',()=>lancerMission(b.dataset.mission)));
+  $('#dossiers').addEventListener('click',e=>{
+    const b=e.target.closest('.dossier'); if(!b) return;
+    S.dossier=b.dataset.dossier; rendreDossiers(); majCompteurs(); rendreListe();
+  });
+  $('#recherche').addEventListener('input',e=>{ S.recherche=e.target.value; rendreListe() });
+  $('#liste').addEventListener('click',e=>{
+    const b=e.target.closest('.ligne'); if(b) selectionner(b.dataset.id);
+  });
+  $('#lecture').addEventListener('click',e=>{
+    const b=e.target.closest('[data-act]'); if(b) actionMessage(b.dataset.act);
+  });
+  $('#btn-retour').addEventListener('click',fermerLecture);
+  $('#btn-recharger').addEventListener('click',charger);
+  $('#btn-stop').addEventListener('click',()=>{ S.stop=true; log('Arrêt demandé…','') });
+  $('#btn-journal').addEventListener('click',()=>$('#dock').classList.toggle('ouvert'));
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){
+      if($('#voile').classList.contains('on')) return fermerModale();
+      if(S.actif){ S.stop=true; log('Arrêt demandé (Échap).','') }
+      else if(S.selection&&S.skin==='gmail') fermerLecture();
+    }
+  });
+  window.addEventListener('resize',()=>Agent.eteindreProjecteur());
+}
+
+(async function demarrer(){
+  brancher();
+  appliquerSkin('gmail');
+  await chargerConfigFichier();
+  majEtatMoteur();
+  afficherReprise();
+  preparerBoutons();
+  if(!cleCourante() && REGLAGES.relaisUrl) sonderRelais();
+  if(location.protocol==='file:'){
+    $('#mini-l').innerHTML="<b>Fichier ouvert en local.</b> La boîte d'entraînement fonctionne, "+
+      "mais Google et Microsoft exigent une adresse en ligne (https) pour autoriser la connexion.";
+  }
+  if(location.search.includes('code=')||location.search.includes('error=')){
+    S.fournisseur='microsoft'; appliquerSkin('outlook');
+    try{
+      const ok=await Microsoft.reprendreRedirection();
+      if(ok) await apresConnexion(); else S.fournisseur=null;
+    }catch(e){
+      S.fournisseur=null;
+      const el=$('#etat-cle'); if(el){ el.textContent='Connexion Microsoft interrompue : '+e.message.slice(0,140); el.style.color='#B91C1C' }
+    }
+  }
+})();
+</script>
+</body>
+</html>
