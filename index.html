@@ -1961,6 +1961,43 @@ async function verifierCle(moteur, cle){
     return false;
   }
 }
+/* ── Refus de connexion : traduire le jargon des fournisseurs ─────────────
+   Les deux plateformes refusent pour des raisons très différentes, et chacune
+   a sa porte de sortie. Autant la donner tout de suite. */
+function expliquerRefus(fournisseur, err){
+  const t=(err&&err.message||String(err||'')).toLowerCase();
+  if(fournisseur==='google'){
+    if(/access_denied|blocked|not been verified|test user|403/.test(t))
+      return {texte:"Votre adresse n'est pas encore autorisée sur cette application Google. "+
+        "Tant que l'application n'a pas passé la vérification de Google, seuls les comptes inscrits "+
+        "comme testeurs peuvent se connecter — demandez à France IA d'ajouter la vôtre.", lien:null};
+    if(/popup_closed|fenêtre/.test(t)) return {texte:"Fenêtre de connexion fermée avant la fin.", lien:null};
+    if(/origin|redirect_uri|invalid_client/.test(t))
+      return {texte:"Cette adresse n'est pas déclarée dans l'application Google. Ajoutez "+
+        location.origin+" aux origines autorisées.", lien:null};
+  }
+  if(fournisseur==='microsoft'){
+    if(/aadsts65001|consent_required|aadsts900382|admin/.test(t))
+      return {texte:"Votre service informatique doit approuver l'application pour votre organisation. "+
+        "Transmettez-lui ce lien d'approbation :", lien:lienConsentementAdmin()};
+    if(/aadsts50020|aadsts50059/.test(t))
+      return {texte:"Ce compte n'appartient pas à un annuaire reconnu par l'application.", lien:null};
+  }
+  return {texte:(err&&err.message)||'Connexion interrompue.', lien:null};
+}
+function lienConsentementAdmin(){
+  if(!REGLAGES.microsoftClientId) return null;
+  return 'https://login.microsoftonline.com/common/adminconsent?client_id='+
+    encodeURIComponent(REGLAGES.microsoftClientId)+'&redirect_uri='+encodeURIComponent(location.origin+location.pathname);
+}
+function afficherRefus(fournisseur, err){
+  const e=$('#etat-cle'); if(!e) return;
+  const d=expliquerRefus(fournisseur, err);
+  e.style.color='#B45309';
+  e.innerHTML=ech(d.texte)+(d.lien?' <a href="'+ech(d.lien)+'" target="_blank" rel="noopener" '+
+    'style="color:#4169E1;font-weight:600">ouvrir la demande d\'approbation</a>':'');
+}
+
 /* ── Session ─────────────────────────────────────────────────────────────
    On retient qui s'est connecté (nom, adresse, photo), jamais le jeton.
    Au retour, un seul bouton : Continuer. */
@@ -1992,7 +2029,7 @@ async function reprendreSession(){
     await apresConnexion();
   }catch(err){
     S.fournisseur=null;
-    if(e){ e.style.color='#B91C1C'; e.textContent=err.message.slice(0,200) }
+    afficherRefus(ss.fournisseur, err);
   }
 }
 function changerDeCompte(){
@@ -2018,7 +2055,7 @@ async function preparerBoutons(){
         if(e){ e.style.color='#6B7280'; e.textContent='Bonjour '+(identite.nom||identite.email)+" — autorisation de votre boîte…" }
         S.fournisseur='google'; appliquerSkin('gmail');
         try{ await Google.connecter(); await apresConnexion() }
-        catch(err){ S.fournisseur=null; if(e){ e.style.color='#B91C1C'; e.textContent=err.message.slice(0,200) } }
+        catch(err){ S.fournisseur=null; afficherRefus('google', err) }
       });
       if(!lireSession()) Google.proposerUnClic();
     }catch(err){ if(e) e.textContent=err.message.slice(0,160) }
@@ -2035,9 +2072,9 @@ async function connecter(cle){
     await FOURNISSEURS[cle].connecter();
     await apresConnexion();
   }catch(err){
+    afficherRefus(cle, err);
     S.fournisseur=null;
-    if(e){ e.textContent=err.message.slice(0,200); e.style.color='#B91C1C' }
-    toast(err.message);
+    log('Connexion refusée : '+ech(err.message),'err');
   }
 }
 async function apresConnexion(){
@@ -2143,6 +2180,181 @@ function brancher(){
   window.addEventListener('resize',()=>Agent.eteindreProjecteur());
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   10 · MODE DÉMONSTRATION — activé uniquement par ?demo=1
+   Boîte fictive et analyses pré-écrites, pour montrer l'outil sans compte ni
+   clé. Ce bloc ne s'active jamais sans ce paramètre : l'outil distribué ne
+   parle qu'à de vraies messageries.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function modeDemo(){
+  const q=new URLSearchParams(location.search);
+  if(!q.has('demo')) return;
+  const skinDemo = q.get('demo')==='outlook' ? 'outlook' : 'gmail';
+  const H=(h,m)=>{const d=new Date();d.setHours(h,m,0,0);return d.toISOString()};
+  const J=(n,h)=>{const d=new Date();d.setDate(d.getDate()-n);d.setHours(h,0,0,0);return d.toISOString()};
+
+  const BOITE=[
+   {expNom:'Sophie Marchand',expMail:'s.marchand@atelier-verrier.fr',objet:'Devis atelier du 14 : on valide ?',date:H(9,12),
+    corps:"Bonjour,\n\nNous avons relu votre proposition pour la session du 14 octobre. Le format nous convient, mais deux points restent à caler :\n\n1. Le nombre de participants passerait de 8 à 12. Est-ce que cela change le tarif ?\n2. Nous aurions besoin d'une facture au nom de la holding, pas de l'atelier.\n\nSi vous confirmez avant vendredi, je lance la signature.\n\nBien cordialement,\nSophie Marchand",
+    sim:{categorie:'À répondre',urgence:'haute',resume:"Valide le format, demande le tarif pour 12 participants et une facture au nom de la holding, avant vendredi.",reponse:true,
+     brouillon:"Bonjour Sophie,\n\nMerci pour ce retour, et bonne nouvelle pour le format.\n\nSur vos deux points :\n\n1. Passer de 8 à 12 participants est possible sur cette session. Le tarif évolue en conséquence : [à confirmer : tarif pour 12 participants].\n2. Aucune difficulté pour établir la facture au nom de la holding — merci de m'envoyer sa raison sociale, son adresse et son numéro de TVA intracommunautaire.\n\nSi ces éléments vous conviennent, je vous adresse la convention mise à jour aujourd'hui, pour une signature avant vendredi.\n\nBien à vous,"}},
+   {expNom:'Greffe du Tribunal de commerce',expMail:'no-reply@infogreffe.fr',objet:'Dépôt de comptes annuels : pièce manquante',date:H(8,3),
+    corps:"Madame, Monsieur,\n\nVotre dépôt de comptes annuels référencé D-2026-448127 n'a pas pu être finalisé : l'attestation de confidentialité n'est pas jointe au dossier.\n\nMerci de compléter votre dépôt sous 15 jours, faute de quoi le dossier sera clôturé sans suite.\n\nCordialement,\nLe greffe",
+    sim:{categorie:'Action requise',urgence:'haute',resume:"Dépôt de comptes bloqué : attestation de confidentialité manquante, à fournir sous 15 jours.",reponse:false}},
+   {expNom:'Comptabilité — Cabinet Renard',expMail:'facturation@cabinet-renard.fr',objet:'Facture FA-2026-0912 échue depuis 8 jours',date:J(1,17),
+    corps:"Bonjour,\n\nSauf erreur, la facture FA-2026-0912 d'un montant de 1 840,00 € TTC, échue le 15 septembre, reste impayée.\n\nMerci de nous indiquer la date de règlement prévue.\n\nCordialement,\nService facturation",
+    sim:{categorie:'Administratif',urgence:'haute',resume:"Relance sur la facture FA-2026-0912, 1 840 € TTC, échue depuis 8 jours.",reponse:true,
+     brouillon:"Bonjour,\n\nMerci pour votre relance, et désolé pour ce retard.\n\nLe règlement de la facture FA-2026-0912 (1 840,00 € TTC) est programmé pour [à confirmer : date de virement]. Je vous transmets l'avis d'opération dès qu'il est émis.\n\nSi un justificatif vous est nécessaire d'ici là, dites-le-moi.\n\nBien à vous,"}},
+   {expNom:'Karim Belkacem',expMail:'karim@studio-bleuciel.com',objet:'Relance — proposition envoyée le 3',date:H(8,41),
+    corps:"Bonjour,\n\nJe reviens vers vous concernant la proposition d'accompagnement envoyée le 3 septembre. Sans nouvelle, je ne sais pas si le sujet est toujours d'actualité.\n\nDeux mots suffiront : on continue, ou je classe le dossier ?\n\nBonne journée,\nKarim",
+    sim:{categorie:'À répondre',urgence:'moyenne',resume:"Relance sa proposition du 3 septembre et demande si le sujet reste d'actualité.",reponse:true,
+     brouillon:"Bonjour Karim,\n\nMerci de votre relance, et pardon pour le silence.\n\nLe sujet reste d'actualité de notre côté : nous arbitrons actuellement le calendrier du dernier trimestre. Je reviens vers vous avec une réponse ferme [à confirmer : échéance].\n\nNe classez pas le dossier.\n\nBien à vous,"}},
+   {expNom:'Léa Dubreuil',expMail:'lea.dubreuil@mairie-vertbois.fr',objet:'Décalage de la réunion de cadrage',date:H(7,55),
+    corps:"Bonjour,\n\nNotre adjoint au numérique est souffrant, nous devons décaler la réunion de cadrage prévue jeudi 10h.\n\nSeriez-vous disponible mardi prochain, même heure ? À défaut, mercredi après-midi.\n\nMerci d'avance,\nLéa Dubreuil",
+    sim:{categorie:'À répondre',urgence:'moyenne',resume:"Demande de décaler la réunion de jeudi à mardi même heure, ou mercredi après-midi.",reponse:true,
+     brouillon:"Bonjour Léa,\n\nMerci de me prévenir, et bon rétablissement à votre adjoint.\n\nMardi prochain à 10h me convient. Je bloque ce créneau ; si mercredi après-midi devenait finalement préférable, dites-le-moi avant [à confirmer : date limite].\n\nBien à vous,"}},
+   {expNom:'Thomas Nguyen',expMail:'t.nguyen@groupe-lorival.com',objet:'Re: Compte rendu atelier IA — quelques retours',date:J(1,16),
+    corps:"Merci pour le compte rendu, c'est très clair.\n\nTrois remarques :\n- la partie sur la qualification des prospects mériterait un exemple chiffré ;\n- nos commerciaux aimeraient une seconde session, plus courte ;\n- pouvez-vous nous transmettre les prompts utilisés pendant l'atelier ?\n\nOn en reparle la semaine prochaine ?\n\nThomas",
+    sim:{categorie:'À répondre',urgence:'moyenne',resume:"Trois retours sur le compte rendu, demande une seconde session courte et les prompts de l'atelier.",reponse:true,
+     brouillon:"Bonjour Thomas,\n\nMerci pour ces retours, ils sont utiles.\n\nPoint par point :\n\n- Exemple chiffré sur la qualification : je complète le compte rendu et vous le renvoie [à confirmer : délai].\n- Seconde session plus courte : c'est faisable, format demi-journée. Je vous prépare une proposition.\n- Les prompts utilisés pendant l'atelier : je vous les transmets avec le compte rendu corrigé.\n\nPour en reparler, la semaine prochaine me va — proposez-moi un créneau.\n\nBien à vous,"}},
+   {expNom:'Hélène Vasseur',expMail:'h.vasseur@clinique-montjoie.fr',objet:'Convention de formation à signer',date:J(2,11),
+    corps:"Bonjour,\n\nNotre service RH a validé le devis. Pouvez-vous nous adresser la convention de formation, le programme détaillé et le CV du formateur, pour notre dossier OPCO ?\n\nNous visons un démarrage en novembre.\n\nCordialement,\nHélène Vasseur",
+    sim:{categorie:'Action requise',urgence:'haute',resume:"Devis validé : attend convention, programme détaillé et CV du formateur pour le dossier OPCO.",reponse:true,
+     brouillon:"Bonjour Hélène,\n\nExcellente nouvelle, merci pour cette validation.\n\nJe vous adresse aujourd'hui les trois pièces pour votre dossier OPCO : la convention de formation, le programme détaillé et le CV du formateur.\n\nPour un démarrage en novembre, il nous faudrait la convention signée avant [à confirmer : date limite de dépôt OPCO].\n\nBien à vous,"}},
+   {expNom:'Assurance Pro Axelia',expMail:'contrats@axelia-pro.fr',objet:'Échéance de votre contrat RC Professionnelle',date:J(1,14),
+    corps:"Bonjour,\n\nVotre contrat de responsabilité civile professionnelle n° RCP-77 341 arrive à échéance le 31 octobre 2026.\n\nSans opposition avant le 30 septembre, il sera reconduit tacitement à 68,40 € par mois.\n\nAssurance Pro Axelia",
+    sim:{categorie:'Administratif',urgence:'moyenne',resume:"Reconduction tacite du contrat RC Pro au 31 octobre, opposition possible jusqu'au 30 septembre.",reponse:false}},
+   {expNom:'La Revue du Dirigeant',expMail:'lettre@revue-dirigeant.fr',objet:'Cette semaine : financer sa croissance sans diluer son capital',date:J(1,7),
+    corps:"Au sommaire de votre lettre hebdomadaire :\n\n· Les six leviers de financement non dilutifs\n· Portrait : une PME de Roubaix qui a doublé sa marge\n· Le point réglementaire du mois\n\nPour ne plus recevoir cette lettre, cliquez sur le lien de désabonnement.",
+    sim:{categorie:'Newsletter',urgence:'basse',resume:"Lettre hebdomadaire : financement non dilutif, portrait d'entreprise, point réglementaire.",reponse:false}},
+   {expNom:'Webinaire Croissance & Co',expMail:'invitations@croissance-co.fr',objet:'Dernières heures pour vous inscrire',date:J(2,9),
+    corps:"Il reste quelques places pour notre webinaire de jeudi : « Automatiser sa prospection en 2026 ».\n\nInscription gratuite, replay envoyé aux inscrits.",
+    sim:{categorie:'Newsletter',urgence:'basse',resume:"Invitation à un webinaire sur l'automatisation de la prospection.",reponse:false}},
+   {expNom:'Investissement Prestige',expMail:'contact@opportunite-rendement-eu.net',objet:'Rendement garanti 14% — places limitées',date:J(3,22),
+    corps:"Cher partenaire,\n\nNotre fonds privé ouvre 12 places à des investisseurs sélectionnés. Rendement garanti de 14% par an, capital sécurisé.\n\nRépondez OUI pour réserver votre place avant ce soir minuit.",
+    sim:{categorie:'Indésirable',urgence:'basse',resume:"Démarchage financier promettant un rendement garanti de 14 % : signaux d'arnaque.",reponse:false}},
+   {expNom:'Marie Lopez',expMail:'marie.lopez@ecole-primevere.fr',objet:'Remerciements + demande de recommandation',date:J(3,10),
+    corps:"Bonjour,\n\nUn mot pour vous remercier : la session de juin a beaucoup fait bouger l'équipe.\n\nSeriez-vous d'accord pour que je vous recommande auprès de deux écoles du réseau ?\n\nBien à vous,\nMarie Lopez",
+    sim:{categorie:'À répondre',urgence:'basse',resume:"Remercie pour la session de juin et propose de vous recommander à deux écoles.",reponse:true,
+     brouillon:"Bonjour Marie,\n\nMerci beaucoup pour ce retour, il fait plaisir.\n\nJe suis bien sûr d'accord pour que vous me recommandiez auprès de ces deux écoles. Dites-moi si vous préférez que je vous envoie une présentation courte à transmettre, ou que je prenne contact une fois que vous les aurez prévenues.\n\nBien à vous,"}}
+  ].map((m,i)=>({id:'d'+i, threadId:'t'+i, expNom:m.expNom, expMail:m.expMail, objet:m.objet, date:m.date,
+     corps:m.corps, extrait:m.corps.replace(/\n+/g,' ').slice(0,130), nonlu:true, sim:m.sim,
+     categorie:null, resume:null, brouillon:null, draftId:null, archive:false, traite:false}));
+
+  const ENVOYES=[
+   {objet:'Re: Programme de la session du 2', a:'contact@groupe-lorival.com', date:'',
+    texte:"Bonjour Thomas,\n\nBien noté pour les douze participants. Je vous confirme la salle et j'envoie le programme détaillé demain.\n\nBien à vous,\nTanguy Denonain — France IA"},
+   {objet:'Devis — accompagnement IA', a:'direction@coop-lesgrains.fr', date:'',
+    texte:"Bonjour Camille,\n\nVoici le devis pour les deux demi-journées. Il est valable trente jours, et finançable par votre OPCO.\n\nDites-moi si vous souhaitez que nous calions les dates dès maintenant.\n\nBien à vous,\nTanguy Denonain — France IA"},
+   {objet:'Re: Facture de septembre', a:'facturation@cabinet-renard.fr', date:'',
+    texte:"Bonjour,\n\nC'est noté, le virement part cette semaine.\n\nBien à vous,\nTanguy Denonain — France IA"}
+  ];
+
+  const etat={msgs:BOITE.map(m=>({...m}))};
+  FOURNISSEURS.demo={
+    id:'demo', nom:(skinDemo==='outlook'?'Outlook':'Gmail'),
+    async connecter(){ return true },
+    async reprendre(){ return false },
+    async profil(){ return {email:'vous@demonstration.fr', nom:'Compte de démonstration', photo:''} },
+    async lister(){ await dors(280); return etat.msgs.map(m=>({...m})) },
+    async listerEnvoyes(){ await dors(200); return ENVOYES },
+    async corps(id){ await dors(120); return (etat.msgs.find(m=>m.id===id)||{}).corps||'' },
+    async marquerLu(id){ await dors(140); const m=etat.msgs.find(x=>x.id===id); if(m)m.nonlu=false; return true },
+    async archiver(id){ await dors(160); const m=etat.msgs.find(x=>x.id===id); if(m)m.archive=true; return true },
+    async etiqueter(id,e){ await dors(140); const m=etat.msgs.find(x=>x.id===id); if(m)m.categorie=e; return true },
+    async creerBrouillon(msg){ await dors(220); return 'brouillon-demo-'+msg.id },
+    lienExterne(){ return null },
+    async deconnecter(){ etat.msgs=BOITE.map(m=>({...m})) }
+  };
+
+  /* Moteur simulé : analyses écrites d'avance, rendues au fil de l'eau, pour
+     que la démonstration ne dépende d'aucune clé. Dès qu'une vraie clé ou un
+     relais est configuré, le vrai moteur reprend la main. */
+  async function ecrire(texte, onDelta){
+    let acc='';
+    for(const mot of texte.split(/(\s+)/)){ acc+=mot; if(onDelta) onDelta(mot,acc); await dors(8) }
+    return acc;
+  }
+  const vraiAppel=Moteur.appel.bind(Moteur);
+  Moteur.appel=async function(o){
+    if(S.fournisseur!=='demo' || cleCourante() || REGLAGES.relaisUrl) return vraiAppel(o);
+    const inv=o.invite||'', sys=o.systeme||'';
+    if(o.onPensee) await ecrire("Lecture de l'expéditeur, de l'objet et du corps, recherche d'une échéance.",(_,t)=>o.onPensee(t));
+    const ref=(BOITE.find(m=>inv.includes(m.objet))||{sim:{}}).sim;
+    if(inv.includes('"categorie"'))
+      return JSON.stringify({categorie:ref.categorie||'Pour information', urgence:ref.urgence||'basse',
+        resume:ref.resume||'', reponse_attendue:!!ref.reponse});
+    if(inv.includes('"identite"'))
+      // La mission « Me connaître » lit le flux, pas la valeur de retour : on écrit.
+      return ecrire(JSON.stringify({identite:'Tanguy Denonain', activite:"France IA — formation des dirigeants à l'IA",
+        role:'Dirigeant', ton:'Direct et courtois, phrases courtes, aucune formule creuse', vouvoiement:true,
+        longueur:'courte', formules:{ouverture:['Bonjour Prénom,'],cloture:['Bien à vous,']},
+        signature:'Tanguy Denonain — France IA', interlocuteurs:['clients','OPCO','organismes publics'],
+        sujets:['sessions de formation','devis et conventions','financement OPCO'],
+        consignes:"Aller droit au but. Répondre point par point. Vouvoyer. Ne jamais inventer un montant ou une date : le mettre entre crochets. Signer « Tanguy Denonain — France IA »."}), o.onDelta);
+    if(/chef de cabinet/i.test(sys))
+      return ecrire("1. Ce qui ne peut pas attendre\n"+
+        "· Greffe du Tribunal de commerce — attestation de confidentialité manquante, dossier clôturé sans suite sous 15 jours.\n"+
+        "· Hélène Vasseur, clinique Montjoie — devis validé, attend convention, programme et CV pour son dossier OPCO, démarrage visé en novembre.\n"+
+        "· Cabinet Renard — facture FA-2026-0912 de 1 840 € TTC échue depuis 8 jours.\n\n"+
+        "2. À répondre cette semaine\n"+
+        "· Sophie Marchand — tarif pour 12 participants et facture au nom de la holding, réponse attendue avant vendredi.\n"+
+        "· Léa Dubreuil — confirmer le report de la réunion à mardi 10h.\n"+
+        "· Thomas Nguyen — exemple chiffré, seconde session courte, envoi des prompts.\n"+
+        "· Karim Belkacem — relance de sa proposition du 3 septembre, attend un oui ou un non.\n\n"+
+        "3. Pour information\n"+
+        "· Axelia : reconduction tacite de la RC Pro au 31 octobre, opposition possible jusqu'au 30 septembre.\n"+
+        "· Deux diffusions et un démarchage financier douteux, sans action de votre part.\n\n"+
+        "4. Ce que je propose de faire\n"+
+        "· Envoyer les trois pièces à la clinique Montjoie : c'est ce qui débloque un démarrage en novembre.\n"+
+        "· Répondre à Sophie Marchand avec le tarif pour 12 participants.\n"+
+        "· Programmer le règlement de la facture Renard et en informer le cabinet.", o.onDelta);
+    if(/brouillon de réponse/i.test(sys)){
+      const t=ref.brouillon||"Bonjour,\n\nMerci pour votre message, je reviens vers vous rapidement.\n\nBien à vous,";
+      return ecrire(t+"\nTanguy Denonain — France IA", o.onDelta);
+    }
+    if(/résumez/i.test(sys))
+      return ecrire((ref.resume||'')+"\n\nCe qu'on attend de vous\n"+
+        (ref.reponse?"· Une réponse écrite de votre part.":"· Rien : le classement suffit.")+
+        (ref.urgence==='haute'?"\n\nÉchéance\n· Traitement rapide recommandé.":''), o.onDelta);
+    return ecrire('—', o.onDelta);
+  };
+  moteurDispo=()=>true;
+  moteurNom=()=>'démonstration';
+
+  const _prep=preparerBoutons;
+  preparerBoutons=async function(){
+    await _prep.apply(this,arguments);
+    const cx=$('#connexions'), vide=$('#aucune-connexion');
+    if(vide) vide.hidden=true;
+    if(cx && !$('#btn-demo')){
+      const b=document.createElement('button');
+      b.id='btn-demo'; b.className='bouton-ms';
+      b.style.cssText='border-color:#4169E1;background:#4169E1;color:#fff;font-family:Inter,sans-serif;font-weight:600';
+      b.textContent='Lancer la démonstration';
+      b.addEventListener('click',()=>connecter('demo'));
+      cx.appendChild(b);
+    }
+    const e=$('#etat-cle');
+    if(e){ e.style.color='#B45309';
+      e.textContent="Mode démonstration : boîte fictive et analyses pré-écrites. Aucune vraie messagerie n'est touchée." }
+  };
+  const _apres=apresConnexion;
+  apresConnexion=async function(){
+    await _apres.apply(this,arguments);
+    if(S.fournisseur==='demo' && !$('#bandeau-demo')){
+      const d=document.createElement('div');
+      d.id='bandeau-demo';
+      d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);top:0;z-index:850;background:#B45309;color:#fff;'+
+        'font:600 11px Inter,sans-serif;letter-spacing:.05em;padding:4px 14px;border-radius:0 0 8px 8px';
+      d.textContent='DÉMONSTRATION — boîte fictive, analyses pré-écrites';
+      document.body.appendChild(d);
+    }
+  };
+  const _skin=appliquerSkin;
+  appliquerSkin=function(x){ _skin(S.fournisseur==='demo'?skinDemo:x) };
+})();
+
 (async function demarrer(){
   brancher();
   appliquerSkin('gmail');
@@ -2162,7 +2374,7 @@ function brancher(){
       if(ok) await apresConnexion(); else S.fournisseur=null;
     }catch(e){
       S.fournisseur=null;
-      const el=$('#etat-cle'); if(el){ el.textContent='Connexion Microsoft interrompue : '+e.message.slice(0,140); el.style.color='#B91C1C' }
+      afficherRefus('microsoft', e);
     }
   }
 })();
