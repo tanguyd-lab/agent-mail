@@ -1,0 +1,11 @@
+{
+  "name": "france-ia",
+  "owner": { "name": "France IA", "url": "https://franceia.com" },
+  "plugins": [
+    {
+      "source": "./plugin",
+      "name": "agent-mail",
+      "description": "Un agent qui trie votre boîte mail, prépare vos brouillons et vous rend un bilan — sous vos yeux."
+    }
+  ]
+}
