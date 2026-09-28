@@ -1346,7 +1346,10 @@ async function missionProfil(){
       '"signature":"son bloc de signature tel quel","interlocuteurs":["types d\'interlocuteurs"],'+
       '"sujets":["sujets récurrents"],'+
       '"consignes":"trois à cinq consignes que devrait suivre quelqu\'un qui écrit à sa place"}',
-    onDelta:(_,tout)=>{ brut=tout; zone.textContent=tout.replace(/[{}"]/g,'').slice(0,1200) }
+    // On montre les valeurs au fil de l'eau, pas la structure technique.
+    onDelta:(_,tout)=>{ brut=tout;
+      zone.textContent=tout.replace(/[{}\[\]"]/g,'').split(',')
+        .map(x=>x.split(':').slice(1).join(':').trim()).filter(Boolean).join(' · ').slice(0,900) }
   });
   zone.classList.remove('ecrit');
   let d; try{ d=extraireJSON(brut) }
