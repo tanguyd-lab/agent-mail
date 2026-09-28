@@ -1,0 +1,7 @@
+{
+  "name": "agent-mail",
+  "version": "1.0.0",
+  "description": "Agent Mail — tri, résumés et brouillons de votre boîte mail, avec un bilan visuel. Offert par France IA.",
+  "author": { "name": "France IA", "url": "https://franceia.com" },
+  "keywords": ["mail", "gmail", "outlook", "tri", "brouillons", "productivité"]
+}
